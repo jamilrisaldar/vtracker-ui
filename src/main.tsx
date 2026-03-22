@@ -1,11 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { Provider } from 'react-redux'
 import { BrowserRouter } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import './index.css'
 import App from './App'
-import { AuthProvider } from './auth/AuthContext'
 import { googleClientId } from './config'
+import { store } from './store/store'
+import { AuthBootstrap } from './store/AuthBootstrap'
 
 const root = document.getElementById('root')!
 
@@ -15,11 +17,13 @@ const backendAuth =
 
 const app = (
   <StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </BrowserRouter>
+    <Provider store={store}>
+      <BrowserRouter>
+        <AuthBootstrap>
+          <App />
+        </AuthBootstrap>
+      </BrowserRouter>
+    </Provider>
   </StrictMode>
 )
 
