@@ -11,8 +11,11 @@ export interface User {
   email: string
   name: string
   picture?: string
-  googleSub: string
-  createdAt: string
+  /** Present when using mock / Google auth. */
+  googleSub?: string
+  createdAt?: string
+  /** Present when using backend session (`SessionUser`). */
+  roles?: { id: number | string; name: string }[]
 }
 
 export interface Project {
@@ -83,9 +86,24 @@ export interface ProjectDocument {
   uploadedAt: string
   /** Mock persistence: optional base64 data URL (small files only). */
   dataUrl?: string
+  /** Backend: authenticated download path or URL from API. */
+  downloadUrl?: string
+}
+
+/** Aggregated project report (mock computes locally; backend may expose GET .../report). */
+export interface ProjectReport {
+  project: Project
+  totalInvoiced: number
+  totalPaid: number
+  outstanding: number
+  byVendor: { vendorId: string; vendorName: string; invoiced: number; paid: number }[]
+  byPhase: { phaseId: string; phaseName: string; status: Phase['status'] }[]
+  invoiceCount: number
+  paymentCount: number
 }
 
 export interface AuthSession {
-  token: string
+  /** Mock bearer token (local only). Omitted for cookie-based API auth. */
+  token?: string
   user: User
 }

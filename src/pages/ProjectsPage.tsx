@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Project, ProjectStatus } from '../types'
-import * as api from '../api/mockApi'
+import * as api from '../api/dataApi'
 import { formatDate } from '../utils/format'
 
 const statusLabel: Record<ProjectStatus, string> = {

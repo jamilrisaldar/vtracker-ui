@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { AuthSession } from '../types'
-import * as api from '../api/mockApi'
+import * as authService from '../api/authService'
 import { AuthContext, type AuthState } from './auth-context'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -14,13 +14,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   const refreshSession = useCallback(async () => {
-    const s = await api.getSession()
+    const s = await authService.getSession()
     setSession(s)
   }, [])
 
   useEffect(() => {
     let cancelled = false
-    void api.getSession().then((s) => {
+    void authService.getSession().then((s) => {
       if (cancelled) return
       setSession(s)
       setLoading(false)
@@ -31,17 +31,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const loginWithCredential = useCallback(async (credential: string) => {
-    const s = await api.loginWithGoogleCredential(credential)
+    const s = await authService.loginWithGoogleCredential(credential)
     setSession(s)
   }, [])
 
   const loginMockGoogle = useCallback(async () => {
-    const s = await api.loginWithMockGoogle()
+    const s = await authService.loginWithMockGoogle()
     setSession(s)
   }, [])
 
+  const loginWithEmailPassword = useCallback(
+    async (email: string, password: string) => {
+      const s = await authService.loginWithEmailPassword(email, password)
+      setSession(s)
+    },
+    [],
+  )
+
   const logout = useCallback(async () => {
-    await api.logout()
+    await authService.logout()
     setSession(null)
   }, [])
 
@@ -52,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       loginWithCredential,
       loginMockGoogle,
+      loginWithEmailPassword,
       logout,
       refreshSession,
     }),
@@ -60,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       loginWithCredential,
       loginMockGoogle,
+      loginWithEmailPassword,
       logout,
       refreshSession,
     ],

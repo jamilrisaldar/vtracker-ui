@@ -11,8 +11,8 @@ import type {
   ProjectStatus,
   Vendor,
 } from '../types'
-import * as api from '../api/mockApi'
-import type { ProjectReport } from '../api/mockApi'
+import * as api from '../api/dataApi'
+import type { ProjectReport } from '../types'
 import { formatDate, formatMoney } from '../utils/format'
 
 const tabs = [
@@ -447,6 +447,7 @@ function PhasesTab({
               phases.map((ph) => (
                 <PhaseRow
                   key={ph.id}
+                  projectId={projectId}
                   phase={ph}
                   onRefresh={onRefresh}
                   onError={onError}
@@ -461,10 +462,12 @@ function PhasesTab({
 }
 
 function PhaseRow({
+  projectId,
   phase,
   onRefresh,
   onError,
 }: {
+  projectId: string
   phase: Phase
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
@@ -482,7 +485,7 @@ function PhaseRow({
             const v = e.target.value as PhaseStatus
             void (async () => {
               try {
-                await api.updatePhase(phase.id, { status: v })
+                await api.updatePhase(phase.id, { status: v }, projectId)
                 await onRefresh()
               } catch (err) {
                 onError(err instanceof Error ? err.message : 'Update failed.')
@@ -505,7 +508,7 @@ function PhaseRow({
             if (!confirm('Delete this phase?')) return
             void (async () => {
               try {
-                await api.deletePhase(phase.id)
+                await api.deletePhase(phase.id, projectId)
                 await onRefresh()
               } catch (err) {
                 onError(err instanceof Error ? err.message : 'Delete failed.')
@@ -666,7 +669,7 @@ function VendorsTab({
                             return
                           void (async () => {
                             try {
-                              await api.deleteVendor(v.id)
+                              await api.deleteVendor(v.id, projectId)
                               await onRefresh()
                             } catch (err) {
                               onError(
@@ -899,7 +902,7 @@ function VendorsTab({
                           if (!confirm('Delete this invoice?')) return
                           void (async () => {
                             try {
-                              await api.deleteInvoice(i.id)
+                              await api.deleteInvoice(i.id, projectId)
                               await onRefresh()
                             } catch (err) {
                               onError(
@@ -969,7 +972,7 @@ function VendorsTab({
                             if (!confirm('Delete this payment?')) return
                             void (async () => {
                               try {
-                                await api.deletePayment(p.id)
+                                await api.deletePayment(p.id, projectId)
                                 await onRefresh()
                               } catch (err) {
                                 onError(
@@ -1152,7 +1155,9 @@ function DocumentsTab({
                 </td>
               </tr>
             ) : (
-              documents.map((d) => (
+              documents.map((d) => {
+                const fileUrl = d.dataUrl ?? d.downloadUrl
+                return (
                 <tr key={d.id} className="border-b border-slate-100">
                   <td className="max-w-[200px] truncate px-4 py-3 font-medium">
                     {d.fileName}
@@ -1162,22 +1167,22 @@ function DocumentsTab({
                     {formatDate(d.uploadedAt)}
                   </td>
                   <td className="px-4 py-3">
-                    {d.dataUrl && d.mimeType.startsWith('image/') ? (
+                    {fileUrl && d.mimeType.startsWith('image/') ? (
                       <a
-                        href={d.dataUrl}
+                        href={fileUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="text-teal-700 hover:underline"
                       >
                         <img
-                          src={d.dataUrl}
+                          src={fileUrl}
                           alt=""
                           className="h-12 w-16 rounded object-cover"
                         />
                       </a>
-                    ) : d.dataUrl ? (
+                    ) : fileUrl ? (
                       <a
-                        href={d.dataUrl}
+                        href={fileUrl}
                         target="_blank"
                         rel="noreferrer"
                         className="text-teal-700 hover:underline"
@@ -1196,7 +1201,7 @@ function DocumentsTab({
                         if (!confirm('Remove this document?')) return
                         void (async () => {
                           try {
-                            await api.deleteDocument(d.id)
+                            await api.deleteDocument(d.id, projectId)
                             await onRefresh()
                           } catch (err) {
                             onError(
@@ -1210,7 +1215,8 @@ function DocumentsTab({
                     </button>
                   </td>
                 </tr>
-              ))
+                )
+              })
             )}
           </tbody>
         </table>

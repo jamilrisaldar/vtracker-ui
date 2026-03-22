@@ -7,6 +7,7 @@ export type AuthState = {
   user: User | null
   loginWithCredential: (credential: string) => Promise<void>
   loginMockGoogle: () => Promise<void>
+  loginWithEmailPassword: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refreshSession: () => Promise<void>
 }

@@ -8,9 +8,12 @@ import type {
   PhaseStatus,
   Project,
   ProjectDocument,
+  ProjectReport,
   ProjectStatus,
+  User,
   Vendor,
 } from '../types'
+import { isBackendAuthEnabled } from '../config'
 import {
   clearAuthSession,
   id,
@@ -19,6 +22,7 @@ import {
   saveDb,
   writeAuthSession,
 } from './mockDb'
+import { getApiSessionUserId } from './apiAuthState'
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms))
 
@@ -27,6 +31,11 @@ function nowIso(): string {
 }
 
 function getUserIdOrThrow(): string {
+  if (isBackendAuthEnabled()) {
+    const uid = getApiSessionUserId()
+    if (!uid) throw new Error('Unauthorized')
+    return uid
+  }
   const s = readAuthSession()
   if (!s) throw new Error('Unauthorized')
   const db = loadDb()
@@ -95,7 +104,7 @@ async function finalizeGoogleProfile(p: {
       picture: p.picture,
       googleSub: p.sub,
       createdAt: nowIso(),
-    }
+    } satisfies User
     db.users.push(user)
   } else {
     user.name = p.name
@@ -270,12 +279,14 @@ export async function updatePhase(
   patch: Partial<
     Pick<Phase, 'name' | 'description' | 'startDate' | 'endDate' | 'status' | 'order'>
   >,
+  _projectId?: string,
 ): Promise<Phase> {
   await delay()
   const userId = getUserIdOrThrow()
   const db = loadDb()
   const ph = db.phases.find((x) => x.id === phaseId)
   if (!ph) throw new Error('Not found')
+  if (_projectId && ph.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === ph.projectId)
   if (!proj || proj.userId !== userId) throw new Error('Not found')
   if (patch.name != null) ph.name = patch.name.trim()
@@ -290,12 +301,13 @@ export async function updatePhase(
   return ph
 }
 
-export async function deletePhase(phaseId: string): Promise<void> {
+export async function deletePhase(phaseId: string, _projectId?: string): Promise<void> {
   await delay()
   const userId = getUserIdOrThrow()
   const db = loadDb()
   const ph = db.phases.find((x) => x.id === phaseId)
   if (!ph) throw new Error('Not found')
+  if (_projectId && ph.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === ph.projectId)
   if (!proj || proj.userId !== userId) throw new Error('Not found')
   db.phases = db.phases.filter((x) => x.id !== phaseId)
@@ -345,12 +357,14 @@ export async function updateVendor(
   patch: Partial<
     Pick<Vendor, 'name' | 'contactName' | 'email' | 'phone' | 'notes'>
   >,
+  _projectId?: string,
 ): Promise<Vendor> {
   await delay()
   const userId = getUserIdOrThrow()
   const db = loadDb()
   const v = db.vendors.find((x) => x.id === vendorId)
   if (!v) throw new Error('Not found')
+  if (_projectId && v.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === v.projectId)
   if (!proj || proj.userId !== userId) throw new Error('Not found')
   if (patch.name != null) v.name = patch.name.trim()
@@ -364,12 +378,13 @@ export async function updateVendor(
   return v
 }
 
-export async function deleteVendor(vendorId: string): Promise<void> {
+export async function deleteVendor(vendorId: string, _projectId?: string): Promise<void> {
   await delay()
   const userId = getUserIdOrThrow()
   const db = loadDb()
   const v = db.vendors.find((x) => x.id === vendorId)
   if (!v) throw new Error('Not found')
+  if (_projectId && v.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === v.projectId)
   if (!proj || proj.userId !== userId) throw new Error('Not found')
   const invIds = db.invoices
@@ -443,12 +458,14 @@ export async function updateInvoice(
       | 'status'
     >
   >,
+  _projectId?: string,
 ): Promise<Invoice> {
   await delay()
   const userId = getUserIdOrThrow()
   const db = loadDb()
   const inv = db.invoices.find((x) => x.id === invoiceId)
   if (!inv) throw new Error('Not found')
+  if (_projectId && inv.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === inv.projectId)
   if (!proj || proj.userId !== userId) throw new Error('Not found')
   if (patch.invoiceNumber != null) inv.invoiceNumber = patch.invoiceNumber.trim()
@@ -462,12 +479,13 @@ export async function updateInvoice(
   return inv
 }
 
-export async function deleteInvoice(invoiceId: string): Promise<void> {
+export async function deleteInvoice(invoiceId: string, _projectId?: string): Promise<void> {
   await delay()
   const userId = getUserIdOrThrow()
   const db = loadDb()
   const inv = db.invoices.find((x) => x.id === invoiceId)
   if (!inv) throw new Error('Not found')
+  if (_projectId && inv.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === inv.projectId)
   if (!proj || proj.userId !== userId) throw new Error('Not found')
   db.invoices = db.invoices.filter((x) => x.id !== invoiceId)
@@ -522,12 +540,13 @@ export async function createPayment(input: {
   return pay
 }
 
-export async function deletePayment(paymentId: string): Promise<void> {
+export async function deletePayment(paymentId: string, _projectId?: string): Promise<void> {
   await delay()
   const userId = getUserIdOrThrow()
   const db = loadDb()
   const pay = db.payments.find((x) => x.id === paymentId)
   if (!pay) throw new Error('Not found')
+  if (_projectId && pay.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === pay.projectId)
   if (!proj || proj.userId !== userId) throw new Error('Not found')
   const inv = db.invoices.find((i) => i.id === pay.invoiceId)
@@ -603,12 +622,13 @@ function readFileAsDataUrl(file: File): Promise<string> {
   })
 }
 
-export async function deleteDocument(documentId: string): Promise<void> {
+export async function deleteDocument(documentId: string, _projectId?: string): Promise<void> {
   await delay()
   const userId = getUserIdOrThrow()
   const db = loadDb()
   const d = db.documents.find((x) => x.id === documentId)
   if (!d) throw new Error('Not found')
+  if (_projectId && d.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === d.projectId)
   if (!proj || proj.userId !== userId) throw new Error('Not found')
   db.documents = db.documents.filter((x) => x.id !== documentId)
@@ -617,17 +637,6 @@ export async function deleteDocument(documentId: string): Promise<void> {
 }
 
 // —— Report aggregates (client-side from same mock data) ——
-
-export interface ProjectReport {
-  project: Project
-  totalInvoiced: number
-  totalPaid: number
-  outstanding: number
-  byVendor: { vendorId: string; vendorName: string; invoiced: number; paid: number }[]
-  byPhase: { phaseId: string; phaseName: string; status: Phase['status'] }[]
-  invoiceCount: number
-  paymentCount: number
-}
 
 export async function getProjectReport(projectId: string): Promise<ProjectReport> {
   await delay()

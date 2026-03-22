@@ -9,6 +9,10 @@ import { googleClientId } from './config'
 
 const root = document.getElementById('root')!
 
+const backendAuth =
+  import.meta.env.VITE_USE_BACKEND_AUTH === 'true' ||
+  import.meta.env.VITE_USE_BACKEND_AUTH === '1'
+
 const app = (
   <StrictMode>
     <BrowserRouter>
@@ -20,7 +24,7 @@ const app = (
 )
 
 createRoot(root).render(
-  googleClientId ? (
+  googleClientId && !backendAuth ? (
     <GoogleOAuthProvider clientId={googleClientId}>{app}</GoogleOAuthProvider>
   ) : (
     app
