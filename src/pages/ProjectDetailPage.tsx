@@ -349,6 +349,17 @@ function PhasesTab({
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
   const [desc, setDesc] = useState('')
+  const [reordering, setReordering] = useState(false)
+
+  const sortedPhases = useMemo(
+    () =>
+      [...phases].sort(
+        (a, b) =>
+          a.displayOrder - b.displayOrder ||
+          a.startDate.localeCompare(b.startDate),
+      ),
+    [phases],
+  )
 
   return (
     <div className="space-y-8">
@@ -429,6 +440,9 @@ function PhasesTab({
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
+              <th className="w-px whitespace-nowrap px-2 py-3" scope="col">
+                Order
+              </th>
               <th className="px-4 py-3">Phase</th>
               <th className="px-4 py-3">Start</th>
               <th className="px-4 py-3">End</th>
@@ -439,16 +453,19 @@ function PhasesTab({
           <tbody>
             {phases.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                   No phases yet.
                 </td>
               </tr>
             ) : (
-              phases.map((ph) => (
+              sortedPhases.map((ph) => (
                 <PhaseRow
                   key={ph.id}
                   projectId={projectId}
                   phase={ph}
+                  sortedPhases={sortedPhases}
+                  reordering={reordering}
+                  setReordering={setReordering}
                   onRefresh={onRefresh}
                   onError={onError}
                 />
@@ -464,16 +481,81 @@ function PhasesTab({
 function PhaseRow({
   projectId,
   phase,
+  sortedPhases,
+  reordering,
+  setReordering,
   onRefresh,
   onError,
 }: {
   projectId: string
   phase: Phase
+  sortedPhases: Phase[]
+  reordering: boolean
+  setReordering: (v: boolean) => void
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
 }) {
+  const rowIndex = sortedPhases.findIndex((p) => p.id === phase.id)
+  const canMoveUp = rowIndex > 0
+  const canMoveDown = rowIndex >= 0 && rowIndex < sortedPhases.length - 1
+
+  async function movePhase(direction: 'up' | 'down') {
+    if (rowIndex < 0) return
+    const swapWith = direction === 'up' ? rowIndex - 1 : rowIndex + 1
+    if (swapWith < 0 || swapWith >= sortedPhases.length) return
+    const a = sortedPhases[rowIndex]
+    const b = sortedPhases[swapWith]
+    const aOrder = a.displayOrder
+    const bOrder = b.displayOrder
+    setReordering(true)
+    onError(null)
+    try {
+      await api.updatePhase(a.id, { displayOrder: bOrder }, projectId)
+      await api.updatePhase(b.id, { displayOrder: aOrder }, projectId)
+      await onRefresh()
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Reorder failed.')
+    } finally {
+      setReordering(false)
+    }
+  }
+
   return (
     <tr className="border-b border-slate-100">
+      <td className="px-2 py-2 align-middle">
+        <div className="flex flex-col gap-0.5">
+          <button
+            type="button"
+            title="Move up"
+            disabled={!canMoveUp || reordering}
+            onClick={() => void movePhase('up')}
+            className="rounded border border-slate-200 bg-white p-0.5 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+              <path
+                fillRule="evenodd"
+                d="M10 5.293l-6 6 1.414 1.414L10 8.12l4.586 4.586L16 11.293l-6-6z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            title="Move down"
+            disabled={!canMoveDown || reordering}
+            onClick={() => void movePhase('down')}
+            className="rounded border border-slate-200 bg-white p-0.5 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+              <path
+                fillRule="evenodd"
+                d="M10 14.707l6-6-1.414-1.414L10 11.88 5.414 7.293 4 8.707l6 6z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+        </div>
+      </td>
       <td className="px-4 py-3 font-medium text-slate-900">{phase.name}</td>
       <td className="px-4 py-3 text-slate-600">{formatDate(phase.startDate)}</td>
       <td className="px-4 py-3 text-slate-600">{formatDate(phase.endDate)}</td>
@@ -481,6 +563,7 @@ function PhaseRow({
         <select
           className="rounded border border-slate-200 px-2 py-1 text-xs"
           value={phase.status}
+          disabled={reordering}
           onChange={(e) => {
             const v = e.target.value as PhaseStatus
             void (async () => {
@@ -503,7 +586,8 @@ function PhaseRow({
       <td className="px-4 py-3 text-right">
         <button
           type="button"
-          className="text-xs text-red-600 hover:underline"
+          disabled={reordering}
+          className="text-xs text-red-600 hover:underline disabled:opacity-40"
           onClick={() => {
             if (!confirm('Delete this phase?')) return
             void (async () => {

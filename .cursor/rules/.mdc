@@ -1,0 +1,17 @@
+---
+alwaysApply: true
+---
+
+# Project Guidelines
+
+## Rules
+- Use TypeScript for all new files.
+- Favor functional components over classes.
+- Place all components in `/src/components`.
+- Check existing utility functions before creating new ones.
+- Make components reusable where required.
+- Any Delete buttons should always require user confirmation. 
+- Refer to backend swagger API documentation: http://localhost:3001/api-docs/
+- Create appropriate unit tests for code, for existing code that does not have unit tests and on all newly generated code. 
+- Structure the code for maintainability
+

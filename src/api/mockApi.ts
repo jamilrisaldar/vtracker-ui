@@ -238,7 +238,10 @@ export async function listPhases(projectId: string): Promise<Phase[]> {
   if (!project) throw new Error('Not found')
   return loadDb()
     .phases.filter((x) => x.projectId === projectId)
-    .sort((a, b) => a.order - b.order || a.startDate.localeCompare(b.startDate))
+    .sort(
+      (a, b) =>
+        a.displayOrder - b.displayOrder || a.startDate.localeCompare(b.startDate),
+    )
 }
 
 export async function createPhase(input: {
@@ -254,10 +257,10 @@ export async function createPhase(input: {
   if (!project) throw new Error('Not found')
   const db = loadDb()
   const existing = db.phases.filter((x) => x.projectId === input.projectId)
-  const order =
+  const displayOrder =
     existing.length === 0
       ? 0
-      : Math.max(...existing.map((x) => x.order)) + 1
+      : Math.max(...existing.map((x) => x.displayOrder)) + 1
   const phase: Phase = {
     id: id('phase'),
     projectId: input.projectId,
@@ -266,7 +269,7 @@ export async function createPhase(input: {
     startDate: input.startDate,
     endDate: input.endDate,
     status: input.status ?? 'not_started',
-    order,
+    displayOrder,
   }
   db.phases.push(phase)
   project.updatedAt = nowIso()
@@ -277,7 +280,15 @@ export async function createPhase(input: {
 export async function updatePhase(
   phaseId: string,
   patch: Partial<
-    Pick<Phase, 'name' | 'description' | 'startDate' | 'endDate' | 'status' | 'order'>
+    Pick<
+      Phase,
+      | 'name'
+      | 'description'
+      | 'startDate'
+      | 'endDate'
+      | 'status'
+      | 'displayOrder'
+    >
   >,
   _projectId?: string,
 ): Promise<Phase> {
@@ -295,7 +306,7 @@ export async function updatePhase(
   if (patch.startDate != null) ph.startDate = patch.startDate
   if (patch.endDate != null) ph.endDate = patch.endDate
   if (patch.status != null) ph.status = patch.status
-  if (patch.order != null) ph.order = patch.order
+  if (patch.displayOrder != null) ph.displayOrder = patch.displayOrder
   proj.updatedAt = nowIso()
   saveDb(db)
   return ph
@@ -666,7 +677,7 @@ export async function getProjectReport(projectId: string): Promise<ProjectReport
     outstanding: Math.max(0, totalInvoiced - totalPaid),
     byVendor,
     byPhase: phases
-      .sort((a, b) => a.order - b.order)
+      .sort((a, b) => a.displayOrder - b.displayOrder)
       .map((p) => ({
         phaseId: p.id,
         phaseName: p.name,

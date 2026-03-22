@@ -73,7 +73,15 @@ export async function createPhase(input: {
 export async function updatePhase(
   phaseId: string,
   patch: Partial<
-    Pick<Phase, 'name' | 'description' | 'startDate' | 'endDate' | 'status' | 'order'>
+    Pick<
+      Phase,
+      | 'name'
+      | 'description'
+      | 'startDate'
+      | 'endDate'
+      | 'status'
+      | 'displayOrder'
+    >
   >,
   projectId?: string,
 ): Promise<Phase> {

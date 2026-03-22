@@ -53,6 +53,17 @@ function asNum(v: unknown, fallback = 0): number {
   return fallback
 }
 
+/** Normalize API phase JSON (legacy `order` → `displayOrder`). */
+function normalizePhase(raw: Record<string, unknown>): Phase {
+  const displayOrder =
+    typeof raw.displayOrder === 'number'
+      ? raw.displayOrder
+      : typeof raw.order === 'number'
+        ? raw.order
+        : 0
+  return { ...(raw as unknown as Phase), displayOrder }
+}
+
 // —— Projects ——
 
 export async function listProjects(): Promise<Project[]> {
@@ -109,9 +120,10 @@ export async function deleteProject(projectId: string): Promise<void> {
 // —— Phases ——
 
 export async function listPhases(projectId: string): Promise<Phase[]> {
-  return apiRequest<Phase[]>(
+  const rows = await apiRequest<Record<string, unknown>[]>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/phases`,
   )
+  return rows.map((row) => normalizePhase(row))
 }
 
 export async function createPhase(input: {
@@ -122,7 +134,7 @@ export async function createPhase(input: {
   endDate: string
   status?: PhaseStatus
 }): Promise<Phase> {
-  return apiRequest<Phase>(
+  const created = await apiRequest<Record<string, unknown>>(
     `/api/v1/projects/${encodeURIComponent(input.projectId)}/phases`,
     {
       method: 'POST',
@@ -135,12 +147,21 @@ export async function createPhase(input: {
       }),
     },
   )
+  return normalizePhase(created)
 }
 
 export async function updatePhase(
   phaseId: string,
   patch: Partial<
-    Pick<Phase, 'name' | 'description' | 'startDate' | 'endDate' | 'status' | 'order'>
+    Pick<
+      Phase,
+      | 'name'
+      | 'description'
+      | 'startDate'
+      | 'endDate'
+      | 'status'
+      | 'displayOrder'
+    >
   >,
   projectId: string,
 ): Promise<Phase> {
@@ -150,11 +171,12 @@ export async function updatePhase(
   if (patch.startDate != null) body.startDate = patch.startDate
   if (patch.endDate != null) body.endDate = patch.endDate
   if (patch.status != null) body.status = patch.status
-  if (patch.order != null) body.order = patch.order
-  return apiRequest<Phase>(
+  if (patch.displayOrder != null) body.displayOrder = patch.displayOrder
+  const updated = await apiRequest<Record<string, unknown>>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/phases/${encodeURIComponent(phaseId)}`,
     { method: 'PATCH', body: JSON.stringify(body) },
   )
+  return normalizePhase(updated)
 }
 
 export async function deletePhase(phaseId: string, projectId: string): Promise<void> {
@@ -403,7 +425,9 @@ export async function getProjectReport(projectId: string): Promise<ProjectReport
   }))
   const byPhase = (raw.byPhase ?? []).map((row) => ({
     phaseId: String(row.phaseId ?? row.phase_id ?? ''),
-    phaseName: String(row.phaseName ?? row.phase_name ?? ''),
+    phaseName: String(
+      row.phaseName ?? row.phase_name ?? row.name ?? '',
+    ),
     status: row.status as Phase['status'],
   }))
   return {

@@ -37,7 +37,8 @@ export interface Phase {
   startDate: string
   endDate: string
   status: PhaseStatus
-  order: number
+  /** Sort order within the project (matches API `displayOrder`). */
+  displayOrder: number
 }
 
 export interface Vendor {

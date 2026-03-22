@@ -36,15 +36,28 @@ function emptyDb(): MockDatabase {
   }
 }
 
+function migratePhase(p: Phase & { order?: number }): Phase {
+  const displayOrder =
+    typeof p.displayOrder === 'number'
+      ? p.displayOrder
+      : typeof p.order === 'number'
+        ? p.order
+        : 0
+  return { ...p, displayOrder }
+}
+
 export function loadDb(): MockDatabase {
   try {
     const raw = localStorage.getItem(DB_KEY)
     if (!raw) return emptyDb()
-    const parsed = JSON.parse(raw) as MockDatabase
+    const parsed = JSON.parse(raw) as MockDatabase & {
+      phases?: (Phase & { order?: number })[]
+    }
     return {
       ...emptyDb(),
       ...parsed,
       tokens: parsed.tokens ?? {},
+      phases: (parsed.phases ?? []).map(migratePhase),
     }
   } catch {
     return emptyDb()
