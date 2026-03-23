@@ -635,12 +635,45 @@ function VendorsTab({
   onError: (msg: string | null) => void
 }) {
   const [panelMode, setPanelMode] = useState<'vendor' | 'invoice' | 'payment' | null>(null)
+  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null)
+  const [displayInvoices, setDisplayInvoices] = useState<Invoice[]>(invoices)
+  const [displayPayments, setDisplayPayments] = useState<Payment[]>(payments)
 
   const invoicesById = useMemo(() => {
     const m = new Map<string, Invoice>()
-    invoices.forEach((i) => m.set(i.id, i))
+    displayInvoices.forEach((i) => m.set(i.id, i))
     return m
-  }, [invoices])
+  }, [displayInvoices])
+
+  useEffect(() => {
+    if (!selectedVendorId) {
+      setDisplayInvoices(invoices)
+      setDisplayPayments(payments)
+    }
+  }, [invoices, payments, selectedVendorId])
+
+  useEffect(() => {
+    let ignore = false
+    if (!selectedVendorId) return
+    void (async () => {
+      try {
+        onError(null)
+        const [inv, pay] = await Promise.all([
+          api.listInvoicesByVendor(projectId, selectedVendorId),
+          api.listPaymentsByVendor(projectId, selectedVendorId),
+        ])
+        if (ignore) return
+        setDisplayInvoices(inv)
+        setDisplayPayments(pay)
+      } catch (err) {
+        if (ignore) return
+        onError(err instanceof Error ? err.message : 'Could not filter vendor data.')
+      }
+    })()
+    return () => {
+      ignore = true
+    }
+  }, [projectId, selectedVendorId, onError])
 
   return (
     <div className="space-y-10">
@@ -667,7 +700,7 @@ function VendorsTab({
             ) : (
               <PaymentRecordPanel
                 projectId={projectId}
-                invoices={invoices}
+                invoices={selectedVendorId ? displayInvoices : invoices}
                 vendorName={vendorName}
                 onClose={() => setPanelMode(null)}
                 onRefresh={onRefresh}
@@ -681,7 +714,18 @@ function VendorsTab({
 
       <section>
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-medium text-slate-900">Vendors</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-medium text-slate-900">Vendors</h2>
+            {selectedVendorId && (
+              <button
+                type="button"
+                onClick={() => setSelectedVendorId(null)}
+                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Show all
+              </button>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => setPanelMode('vendor')}
@@ -709,7 +753,16 @@ function VendorsTab({
                 </tr>
               ) : (
                 vendors.map((v) => (
-                  <tr key={v.id} className="border-b border-slate-100">
+                  <tr
+                    key={v.id}
+                    className={[
+                      'border-b border-slate-100 cursor-pointer',
+                      selectedVendorId === v.id ? 'bg-teal-50' : 'hover:bg-slate-50',
+                    ].join(' ')}
+                    onClick={() =>
+                      setSelectedVendorId((curr) => (curr === v.id ? null : v.id))
+                    }
+                  >
                     <td className="px-4 py-3 font-medium text-slate-900">{v.name}</td>
                     <td className="px-4 py-3 text-slate-600">
                       {v.contactName ?? '—'}
@@ -719,12 +772,14 @@ function VendorsTab({
                       <button
                         type="button"
                         className="text-xs text-red-600 hover:underline"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation()
                           if (!confirm('Delete vendor and related invoice links?'))
                             return
                           void (async () => {
                             try {
                               await api.deleteVendor(v.id, projectId)
+                              if (selectedVendorId === v.id) setSelectedVendorId(null)
                               await onRefresh()
                             } catch (err) {
                               onError(
@@ -769,14 +824,14 @@ function VendorsTab({
               </tr>
             </thead>
             <tbody>
-              {invoices.length === 0 ? (
+              {displayInvoices.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
                     No invoices.
                   </td>
                 </tr>
               ) : (
-                invoices.map((i) => (
+                displayInvoices.map((i) => (
                   <tr key={i.id} className="border-b border-slate-100">
                     <td className="px-4 py-3 font-mono text-xs">{i.invoiceNumber}</td>
                     <td className="px-4 py-3">{vendorName.get(i.vendorId) ?? '—'}</td>
@@ -833,19 +888,23 @@ function VendorsTab({
                 <th className="px-4 py-3">Vendor</th>
                 <th className="px-4 py-3">Invoice</th>
                 <th className="px-4 py-3">Amount</th>
+                <th className="px-4 py-3">Method</th>
+                <th className="px-4 py-3">Partial</th>
+                <th className="px-4 py-3">Source</th>
                 <th className="px-4 py-3">Reference</th>
+                <th className="px-4 py-3">Comments</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
-              {payments.length === 0 ? (
+              {displayPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={10} className="px-4 py-6 text-center text-slate-500">
                     No payments.
                   </td>
                 </tr>
               ) : (
-                payments.map((p) => {
+                displayPayments.map((p) => {
                   const inv = invoicesById.get(p.invoiceId)
                   return (
                     <tr key={p.id} className="border-b border-slate-100">
@@ -862,7 +921,19 @@ function VendorsTab({
                           : formatMoney(p.amount)}
                       </td>
                       <td className="px-4 py-3 text-slate-600">
+                        {p.paymentMethod ?? p.method ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {p.isPaymentPartial ? 'Yes' : 'No'}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {p.paymentSource ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
                         {p.reference ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {p.comments ?? '—'}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button

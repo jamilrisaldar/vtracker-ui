@@ -150,6 +150,11 @@ export async function listInvoices(projectId: string): Promise<Invoice[]> {
   return mock.listInvoices(projectId)
 }
 
+export async function listInvoicesByVendor(projectId: string, vendorId: string): Promise<Invoice[]> {
+  if (isBackendAuthEnabled()) return backend.listInvoicesByVendor(projectId, vendorId)
+  return mock.listInvoicesByVendor(projectId, vendorId)
+}
+
 export async function createInvoice(input: {
   projectId: string
   vendorId: string
@@ -202,6 +207,11 @@ export async function listPayments(projectId: string): Promise<Payment[]> {
   return mock.listPayments(projectId)
 }
 
+export async function listPaymentsByVendor(projectId: string, vendorId: string): Promise<Payment[]> {
+  if (isBackendAuthEnabled()) return backend.listPaymentsByVendor(projectId, vendorId)
+  return mock.listPaymentsByVendor(projectId, vendorId)
+}
+
 export async function createPayment(input: {
   projectId: string
   invoiceId: string
@@ -209,6 +219,10 @@ export async function createPayment(input: {
   paidDate: string
   method?: string
   reference?: string
+  paymentMethod?: 'Cash' | 'Cheque' | 'RTGS' | 'Other'
+  isPaymentPartial?: boolean
+  paymentSource?: string
+  comments?: string
 }): Promise<Payment> {
   if (isBackendAuthEnabled()) return backend.createPayment(input)
   return mock.createPayment(input)

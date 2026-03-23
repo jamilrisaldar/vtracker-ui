@@ -72,6 +72,10 @@ export interface Payment {
   paidDate: string
   method?: string
   reference?: string
+  paymentMethod?: 'Cash' | 'Cheque' | 'RTGS' | 'Other'
+  isPaymentPartial?: boolean
+  paymentSource?: string
+  comments?: string
 }
 
 export interface ProjectDocument {

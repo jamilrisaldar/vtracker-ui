@@ -251,6 +251,12 @@ export async function listInvoices(projectId: string): Promise<Invoice[]> {
   )
 }
 
+export async function listInvoicesByVendor(projectId: string, vendorId: string): Promise<Invoice[]> {
+  return apiRequest<Invoice[]>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/invoices/by-vendor/${encodeURIComponent(vendorId)}`,
+  )
+}
+
 export async function createInvoice(input: {
   projectId: string
   vendorId: string
@@ -321,6 +327,12 @@ export async function listPayments(projectId: string): Promise<Payment[]> {
   )
 }
 
+export async function listPaymentsByVendor(projectId: string, vendorId: string): Promise<Payment[]> {
+  return apiRequest<Payment[]>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/payments/by-vendor/${encodeURIComponent(vendorId)}`,
+  )
+}
+
 export async function createPayment(input: {
   projectId: string
   invoiceId: string
@@ -328,6 +340,10 @@ export async function createPayment(input: {
   paidDate: string
   method?: string
   reference?: string
+  paymentMethod?: 'Cash' | 'Cheque' | 'RTGS' | 'Other'
+  isPaymentPartial?: boolean
+  paymentSource?: string
+  comments?: string
 }): Promise<Payment> {
   return apiRequest<Payment>(
     `/api/v1/projects/${encodeURIComponent(input.projectId)}/payments`,
@@ -339,6 +355,10 @@ export async function createPayment(input: {
         paidDate: input.paidDate,
         method: input.method?.trim(),
         reference: input.reference?.trim(),
+        paymentMethod: input.paymentMethod,
+        isPaymentPartial: input.isPaymentPartial,
+        paymentSource: input.paymentSource?.trim(),
+        comments: input.comments?.trim(),
       }),
     },
   )

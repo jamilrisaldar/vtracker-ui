@@ -3,6 +3,8 @@ import * as api from '../api/dataApi'
 import type { Invoice } from '../types'
 import { formatMoney } from '../utils/format'
 
+const paymentMethodOptions = ['Cash', 'Cheque', 'RTGS', 'Other'] as const
+
 export function PaymentRecordPanel({
   projectId,
   invoices,
@@ -23,7 +25,11 @@ export function PaymentRecordPanel({
   const [invoiceId, setInvoiceId] = useState('')
   const [amount, setAmount] = useState('')
   const [paidDate, setPaidDate] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<(typeof paymentMethodOptions)[number]>('Other')
+  const [isPaymentPartial, setIsPaymentPartial] = useState(false)
+  const [paymentSource, setPaymentSource] = useState('')
   const [reference, setReference] = useState('')
+  const [comments, setComments] = useState('')
   const [saving, setSaving] = useState(false)
 
   return (
@@ -50,7 +56,11 @@ export function PaymentRecordPanel({
               invoiceId,
               amount: Number(amount),
               paidDate,
+              paymentMethod,
+              isPaymentPartial,
+              paymentSource: paymentSource || undefined,
               reference: reference || undefined,
+              comments: comments || undefined,
             })
             await onRefresh()
             onClose()
@@ -100,6 +110,44 @@ export function PaymentRecordPanel({
             onChange={(e) => setPaidDate(e.target.value)}
           />
         </label>
+        <label className="block">
+          <span className="text-xs font-medium text-slate-600">Payment method</span>
+          <select
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            value={paymentMethod}
+            onChange={(e) => setPaymentMethod(e.target.value as (typeof paymentMethodOptions)[number])}
+          >
+            {paymentMethodOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-slate-600">Payment source (optional)</span>
+          <input
+            maxLength={100}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            value={paymentSource}
+            onChange={(e) => setPaymentSource(e.target.value)}
+          />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-medium text-slate-600">Payment details</span>
+          <div className="mt-1 flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            <input
+              id="isPaymentPartial"
+              type="checkbox"
+              className="h-4 w-4"
+              checked={isPaymentPartial}
+              onChange={(e) => setIsPaymentPartial(e.target.checked)}
+            />
+            <label htmlFor="isPaymentPartial" className="text-slate-700">
+              Partial payment
+            </label>
+          </div>
+        </label>
         <label className="block sm:col-span-2">
           <span className="text-xs font-medium text-slate-600">
             Reference (optional)
@@ -108,6 +156,15 @@ export function PaymentRecordPanel({
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             value={reference}
             onChange={(e) => setReference(e.target.value)}
+          />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-medium text-slate-600">Comments (optional)</span>
+          <textarea
+            rows={3}
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            value={comments}
+            onChange={(e) => setComments(e.target.value)}
           />
         </label>
 

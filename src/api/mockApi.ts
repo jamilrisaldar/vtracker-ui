@@ -421,6 +421,14 @@ export async function listInvoices(projectId: string): Promise<Invoice[]> {
     .sort((a, b) => b.issuedDate.localeCompare(a.issuedDate))
 }
 
+export async function listInvoicesByVendor(projectId: string, vendorId: string): Promise<Invoice[]> {
+  await delay()
+  if (!(await getProject(projectId))) throw new Error('Not found')
+  return loadDb()
+    .invoices.filter((i) => i.projectId === projectId && i.vendorId === vendorId)
+    .sort((a, b) => b.issuedDate.localeCompare(a.issuedDate))
+}
+
 export async function createInvoice(input: {
   projectId: string
   vendorId: string
@@ -514,6 +522,14 @@ export async function listPayments(projectId: string): Promise<Payment[]> {
     .sort((a, b) => b.paidDate.localeCompare(a.paidDate))
 }
 
+export async function listPaymentsByVendor(projectId: string, vendorId: string): Promise<Payment[]> {
+  await delay()
+  if (!(await getProject(projectId))) throw new Error('Not found')
+  return loadDb()
+    .payments.filter((p) => p.projectId === projectId && p.vendorId === vendorId)
+    .sort((a, b) => b.paidDate.localeCompare(a.paidDate))
+}
+
 export async function createPayment(input: {
   projectId: string
   invoiceId: string
@@ -521,6 +537,10 @@ export async function createPayment(input: {
   paidDate: string
   method?: string
   reference?: string
+  paymentMethod?: 'Cash' | 'Cheque' | 'RTGS' | 'Other'
+  isPaymentPartial?: boolean
+  paymentSource?: string
+  comments?: string
 }): Promise<Payment> {
   await delay()
   const project = await getProject(input.projectId)
@@ -539,6 +559,10 @@ export async function createPayment(input: {
     paidDate: input.paidDate,
     method: input.method?.trim() || undefined,
     reference: input.reference?.trim() || undefined,
+    paymentMethod: input.paymentMethod ?? 'Other',
+    isPaymentPartial: input.isPaymentPartial ?? false,
+    paymentSource: input.paymentSource?.trim() || undefined,
+    comments: input.comments?.trim() || undefined,
   }
   db.payments.push(pay)
   const paidTotal = db.payments
