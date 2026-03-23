@@ -15,6 +15,9 @@ import * as api from '../api/dataApi'
 import type { ProjectReport } from '../types'
 import { formatDate, formatMoney } from '../utils/format'
 import { PhaseAddEditPanel } from '../components/PhaseAddEditPanel'
+import { VendorAddPanel } from '../components/VendorAddPanel'
+import { InvoiceRecordPanel } from '../components/InvoiceRecordPanel'
+import { PaymentRecordPanel } from '../components/PaymentRecordPanel'
 
 const tabs = [
   { id: 'overview', label: 'Overview' },
@@ -631,21 +634,7 @@ function VendorsTab({
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
 }) {
-  const [vName, setVName] = useState('')
-  const [contact, setContact] = useState('')
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
-
-  const [invVendor, setInvVendor] = useState('')
-  const [invNo, setInvNo] = useState('')
-  const [invAmount, setInvAmount] = useState('')
-  const [invIssued, setInvIssued] = useState('')
-  const [invDue, setInvDue] = useState('')
-
-  const [payInvoice, setPayInvoice] = useState('')
-  const [payAmount, setPayAmount] = useState('')
-  const [payDate, setPayDate] = useState('')
-  const [payRef, setPayRef] = useState('')
+  const [panelMode, setPanelMode] = useState<'vendor' | 'invoice' | 'payment' | null>(null)
 
   const invoicesById = useMemo(() => {
     const m = new Map<string, Invoice>()
@@ -655,77 +644,52 @@ function VendorsTab({
 
   return (
     <div className="space-y-10">
-      <form
-        className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-        onSubmit={async (e) => {
-          e.preventDefault()
-          if (!vName.trim()) return
-          onError(null)
-          try {
-            await api.createVendor({
-              projectId,
-              name: vName,
-              contactName: contact || undefined,
-              email: email || undefined,
-              phone: phone || undefined,
-            })
-            setVName('')
-            setContact('')
-            setEmail('')
-            setPhone('')
-            await onRefresh()
-          } catch (err) {
-            onError(err instanceof Error ? err.message : 'Could not add vendor.')
-          }
-        }}
-      >
-        <h2 className="text-lg font-medium text-slate-900">Add vendor</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-slate-600">Name</span>
-            <input
-              required
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={vName}
-              onChange={(e) => setVName(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-600">Contact</span>
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={contact}
-              onChange={(e) => setContact(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-600">Email</span>
-            <input
-              type="email"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </label>
-          <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-slate-600">Phone</span>
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </label>
+      {panelMode !== null && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40" aria-hidden="true">
+          <div className="absolute inset-y-0 right-0 w-full max-w-xl">
+            {panelMode === 'vendor' ? (
+              <VendorAddPanel
+                projectId={projectId}
+                onClose={() => setPanelMode(null)}
+                onRefresh={onRefresh}
+                onError={onError}
+                className="h-full overflow-y-auto rounded-none border-y-0 border-r-0 p-6 shadow-xl"
+              />
+            ) : panelMode === 'invoice' ? (
+              <InvoiceRecordPanel
+                projectId={projectId}
+                vendors={vendors}
+                onClose={() => setPanelMode(null)}
+                onRefresh={onRefresh}
+                onError={onError}
+                className="h-full overflow-y-auto rounded-none border-y-0 border-r-0 p-6 shadow-xl"
+              />
+            ) : (
+              <PaymentRecordPanel
+                projectId={projectId}
+                invoices={invoices}
+                vendorName={vendorName}
+                onClose={() => setPanelMode(null)}
+                onRefresh={onRefresh}
+                onError={onError}
+                className="h-full overflow-y-auto rounded-none border-y-0 border-r-0 p-6 shadow-xl"
+              />
+            )}
+          </div>
         </div>
-        <button
-          type="submit"
-          className="mt-4 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-        >
-          Save vendor
-        </button>
-      </form>
+      )}
 
       <section>
-        <h2 className="text-lg font-medium text-slate-900">Vendors</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-medium text-slate-900">Vendors</h2>
+          <button
+            type="button"
+            onClick={() => setPanelMode('vendor')}
+            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+          >
+            Add vendor
+          </button>
+        </div>
         <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
@@ -781,181 +745,17 @@ function VendorsTab({
         </div>
       </section>
 
-      <form
-        className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-        onSubmit={async (e) => {
-          e.preventDefault()
-          if (!invVendor || !invNo.trim() || !invAmount || !invIssued) return
-          onError(null)
-          try {
-            await api.createInvoice({
-              projectId,
-              vendorId: invVendor,
-              invoiceNumber: invNo,
-              amount: Number(invAmount),
-              issuedDate: invIssued,
-              dueDate: invDue || undefined,
-            })
-            setInvNo('')
-            setInvAmount('')
-            setInvDue('')
-            await onRefresh()
-          } catch (err) {
-            onError(err instanceof Error ? err.message : 'Could not add invoice.')
-          }
-        }}
-      >
-        <h2 className="text-lg font-medium text-slate-900">Record invoice</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-slate-600">Vendor</span>
-            <select
-              required
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={invVendor}
-              onChange={(e) => setInvVendor(e.target.value)}
-            >
-              <option value="">Select vendor</option>
-              {vendors.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-600">Invoice #</span>
-            <input
-              required
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={invNo}
-              onChange={(e) => setInvNo(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-600">Amount</span>
-            <input
-              required
-              type="number"
-              min={0}
-              step="0.01"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={invAmount}
-              onChange={(e) => setInvAmount(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-600">Issued</span>
-            <input
-              required
-              type="date"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={invIssued}
-              onChange={(e) => setInvIssued(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-600">Due (optional)</span>
-            <input
-              type="date"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={invDue}
-              onChange={(e) => setInvDue(e.target.value)}
-            />
-          </label>
-        </div>
-        <button
-          type="submit"
-          className="mt-4 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-        >
-          Add invoice
-        </button>
-      </form>
-
-      <form
-        className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-        onSubmit={async (e) => {
-          e.preventDefault()
-          if (!payInvoice || !payAmount || !payDate) return
-          onError(null)
-          try {
-            await api.createPayment({
-              projectId,
-              invoiceId: payInvoice,
-              amount: Number(payAmount),
-              paidDate: payDate,
-              reference: payRef || undefined,
-            })
-            setPayAmount('')
-            setPayRef('')
-            await onRefresh()
-          } catch (err) {
-            onError(err instanceof Error ? err.message : 'Could not add payment.')
-          }
-        }}
-      >
-        <h2 className="text-lg font-medium text-slate-900">Record payment</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-slate-600">Invoice</span>
-            <select
-              required
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={payInvoice}
-              onChange={(e) => setPayInvoice(e.target.value)}
-            >
-              <option value="">Select invoice</option>
-              {invoices.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.invoiceNumber} — {vendorName.get(i.vendorId) ?? 'Vendor'} —{' '}
-                  {formatMoney(i.amount, i.currency)} ({i.status})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-600">Amount</span>
-            <input
-              required
-              type="number"
-              min={0}
-              step="0.01"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={payAmount}
-              onChange={(e) => setPayAmount(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-600">Paid on</span>
-            <input
-              required
-              type="date"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={payDate}
-              onChange={(e) => setPayDate(e.target.value)}
-            />
-          </label>
-          <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-slate-600">
-              Reference (optional)
-            </span>
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={payRef}
-              onChange={(e) => setPayRef(e.target.value)}
-            />
-          </label>
-        </div>
-        <button
-          type="submit"
-          className="mt-4 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-        >
-          Add payment
-        </button>
-      </form>
-
       <section>
-        <h2 className="text-lg font-medium text-slate-900">Invoices</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-medium text-slate-900">Invoices</h2>
+          <button
+            type="button"
+            onClick={() => setPanelMode('invoice')}
+            className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+          >
+            Record invoice
+          </button>
+        </div>
         <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
@@ -1015,7 +815,16 @@ function VendorsTab({
       </section>
 
       <section>
-        <h2 className="text-lg font-medium text-slate-900">Payments</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-medium text-slate-900">Payments</h2>
+          <button
+            type="button"
+            onClick={() => setPanelMode('payment')}
+            className="rounded-lg bg-teal-800 px-4 py-2 text-sm font-medium text-white hover:bg-teal-900"
+          >
+            Record payment
+          </button>
+        </div>
         <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
