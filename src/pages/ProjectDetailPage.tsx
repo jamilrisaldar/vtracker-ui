@@ -14,6 +14,7 @@ import type {
 import * as api from '../api/dataApi'
 import type { ProjectReport } from '../types'
 import { formatDate, formatMoney } from '../utils/format'
+import { PhaseAddEditPanel } from '../components/PhaseAddEditPanel'
 
 const tabs = [
   { id: 'overview', label: 'Overview' },
@@ -345,11 +346,26 @@ function PhasesTab({
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
 }) {
-  const [name, setName] = useState('')
-  const [start, setStart] = useState('')
-  const [end, setEnd] = useState('')
-  const [desc, setDesc] = useState('')
   const [reordering, setReordering] = useState(false)
+  const [panelMode, setPanelMode] = useState<'add' | 'edit' | null>(null)
+  const [panelPhase, setPanelPhase] = useState<Phase | null>(null)
+
+  const openAdd = () => {
+    if (reordering) return
+    setPanelPhase(null)
+    setPanelMode('add')
+  }
+
+  const openEdit = (phase: Phase) => {
+    if (reordering) return
+    setPanelPhase(phase)
+    setPanelMode('edit')
+  }
+
+  const closePanel = () => {
+    setPanelMode(null)
+    setPanelPhase(null)
+  }
 
   const sortedPhases = useMemo(
     () =>
@@ -361,80 +377,55 @@ function PhasesTab({
     [phases],
   )
 
+  function addDaysToIsoDate(dateStr: string, days: number): string {
+    const base = new Date(`${dateStr}T00:00:00Z`)
+    if (Number.isNaN(base.getTime())) return dateStr
+    base.setUTCDate(base.getUTCDate() + days)
+    return base.toISOString().slice(0, 10)
+  }
+
+  const nextDefaultStartDate = useMemo(() => {
+    if (sortedPhases.length === 0) return undefined
+    const last = sortedPhases[sortedPhases.length - 1]
+    if (!last.endDate) return undefined
+    return addDaysToIsoDate(last.endDate, 1)
+  }, [sortedPhases])
+
+  const actionsDisabled = reordering || panelMode !== null
+
   return (
     <div className="space-y-8">
-      <form
-        className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-        onSubmit={async (e) => {
-          e.preventDefault()
-          if (!name.trim() || !start || !end) return
-          onError(null)
-          try {
-            await api.createPhase({
-              projectId,
-              name,
-              description: desc || undefined,
-              startDate: start,
-              endDate: end,
-            })
-            setName('')
-            setDesc('')
-            await onRefresh()
-          } catch (err) {
-            onError(err instanceof Error ? err.message : 'Could not add phase.')
-          }
-        }}
-      >
-        <h2 className="text-lg font-medium text-slate-900">Add phase / task</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-slate-600">Name</span>
-            <input
-              required
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Foundation & substructure"
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-600">Start</span>
-            <input
-              required
-              type="date"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-600">End</span>
-            <input
-              required
-              type="date"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-            />
-          </label>
-          <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-slate-600">
-              Notes (optional)
-            </span>
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-            />
-          </label>
-        </div>
+      <div className="flex justify-end">
         <button
-          type="submit"
-          className="mt-4 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+          type="button"
+          disabled={reordering}
+          onClick={openAdd}
+          className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
         >
           Add phase
         </button>
-      </form>
+      </div>
+
+      {panelMode !== null && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/40"
+          aria-hidden="true"
+        >
+          <div className="absolute inset-y-0 right-0 w-full max-w-xl">
+            <PhaseAddEditPanel
+              mode={panelMode}
+              projectId={projectId}
+              phase={panelMode === 'edit' ? panelPhase ?? undefined : undefined}
+              onClose={closePanel}
+              onRefresh={onRefresh}
+              onError={onError}
+              disabled={reordering}
+              defaultStartDate={panelMode === 'add' ? nextDefaultStartDate : undefined}
+              className="h-full overflow-y-auto rounded-none border-y-0 border-r-0 p-6 shadow-xl"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-left text-sm">
@@ -468,6 +459,8 @@ function PhasesTab({
                   setReordering={setReordering}
                   onRefresh={onRefresh}
                   onError={onError}
+                  onEdit={openEdit}
+                  actionsDisabled={actionsDisabled}
                 />
               ))
             )}
@@ -486,6 +479,8 @@ function PhaseRow({
   setReordering,
   onRefresh,
   onError,
+  onEdit,
+  actionsDisabled,
 }: {
   projectId: string
   phase: Phase
@@ -494,6 +489,8 @@ function PhaseRow({
   setReordering: (v: boolean) => void
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
+  onEdit: (phase: Phase) => void
+  actionsDisabled: boolean
 }) {
   const rowIndex = sortedPhases.findIndex((p) => p.id === phase.id)
   const canMoveUp = rowIndex > 0
@@ -527,7 +524,7 @@ function PhaseRow({
           <button
             type="button"
             title="Move up"
-            disabled={!canMoveUp || reordering}
+            disabled={!canMoveUp || reordering || actionsDisabled}
             onClick={() => void movePhase('up')}
             className="rounded border border-slate-200 bg-white p-0.5 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -542,7 +539,7 @@ function PhaseRow({
           <button
             type="button"
             title="Move down"
-            disabled={!canMoveDown || reordering}
+            disabled={!canMoveDown || reordering || actionsDisabled}
             onClick={() => void movePhase('down')}
             className="rounded border border-slate-200 bg-white p-0.5 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -563,7 +560,7 @@ function PhaseRow({
         <select
           className="rounded border border-slate-200 px-2 py-1 text-xs"
           value={phase.status}
-          disabled={reordering}
+          disabled={reordering || actionsDisabled}
           onChange={(e) => {
             const v = e.target.value as PhaseStatus
             void (async () => {
@@ -584,24 +581,34 @@ function PhaseRow({
         </select>
       </td>
       <td className="px-4 py-3 text-right">
-        <button
+        <div className="flex items-center justify-end gap-4">
+          <button
           type="button"
-          disabled={reordering}
-          className="text-xs text-red-600 hover:underline disabled:opacity-40"
-          onClick={() => {
-            if (!confirm('Delete this phase?')) return
-            void (async () => {
-              try {
-                await api.deletePhase(phase.id, projectId)
-                await onRefresh()
-              } catch (err) {
-                onError(err instanceof Error ? err.message : 'Delete failed.')
-              }
-            })()
-          }}
+          disabled={actionsDisabled}
+          className="text-xs text-teal-700 hover:underline disabled:opacity-40"
+          onClick={() => onEdit(phase)}
         >
-          Remove
-        </button>
+          Edit
+          </button>
+          <button
+            type="button"
+            disabled={reordering || actionsDisabled}
+            className="text-xs text-red-600 hover:underline disabled:opacity-40"
+            onClick={() => {
+              if (!confirm('Delete this phase?')) return
+              void (async () => {
+                try {
+                  await api.deletePhase(phase.id, projectId)
+                  await onRefresh()
+                } catch (err) {
+                  onError(err instanceof Error ? err.message : 'Delete failed.')
+                }
+              })()
+            }}
+          >
+            Remove
+          </button>
+        </div>
       </td>
     </tr>
   )
