@@ -115,10 +115,14 @@ export async function listPlots(projectId: string): Promise<LandPlot[]> {
 export async function createPlot(input: {
   projectId: string
   plotNumber?: string
-  widthFeet: number
-  lengthFeet: number
+  isIrregular?: boolean
+  widthFeet?: number
+  lengthFeet?: number
+  widthFeet2?: number
+  lengthFeet2?: number
+  totalSquareFeetOverride?: number
   pricePerSqft: number
-  totalPurchasePrice: number
+  totalPurchasePrice?: number
   currency?: string
   isReserved?: boolean
   status?: PlotStatus
@@ -138,10 +142,14 @@ export async function updatePlot(
   projectId: string,
   patch: Partial<{
     plotNumber: string | null
-    widthFeet: number
-    lengthFeet: number
+    isIrregular: boolean
+    widthFeet: number | null
+    lengthFeet: number | null
+    widthFeet2: number | null
+    lengthFeet2: number | null
+    totalSquareFeetOverride: number | null
     pricePerSqft: number
-    totalPurchasePrice: number
+    totalPurchasePrice: number | null
     currency: string
     isReserved: boolean
     status: PlotStatus

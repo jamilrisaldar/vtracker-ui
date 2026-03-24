@@ -350,10 +350,14 @@ export async function listPlots(projectId: string): Promise<LandPlot[]> {
 export async function createPlot(input: {
   projectId: string
   plotNumber?: string
-  widthFeet: number
-  lengthFeet: number
+  isIrregular?: boolean
+  widthFeet?: number
+  lengthFeet?: number
+  widthFeet2?: number
+  lengthFeet2?: number
+  totalSquareFeetOverride?: number
   pricePerSqft: number
-  totalPurchasePrice: number
+  totalPurchasePrice?: number
   currency?: string
   isReserved?: boolean
   status?: PlotStatus
@@ -369,12 +373,17 @@ export async function createPlot(input: {
   if (!project) throw new Error('Not found')
   const db = loadDb()
   const ts = nowIso()
+  const irr = input.isIrregular === true
   const plot: LandPlot = {
     id: id('plot'),
     projectId: input.projectId,
     plotNumber: input.plotNumber?.trim() || undefined,
     widthFeet: input.widthFeet,
     lengthFeet: input.lengthFeet,
+    widthFeet2: irr ? input.widthFeet2 : undefined,
+    lengthFeet2: irr ? input.lengthFeet2 : undefined,
+    isIrregular: irr,
+    totalSquareFeetOverride: input.totalSquareFeetOverride,
     pricePerSqft: input.pricePerSqft,
     totalPurchasePrice: input.totalPurchasePrice,
     currency: input.currency?.trim() || 'USD',
@@ -400,10 +409,14 @@ export async function updatePlot(
   projectId: string,
   patch: Partial<{
     plotNumber: string | null
-    widthFeet: number
-    lengthFeet: number
+    isIrregular: boolean
+    widthFeet: number | null
+    lengthFeet: number | null
+    widthFeet2: number | null
+    lengthFeet2: number | null
+    totalSquareFeetOverride: number | null
     pricePerSqft: number
-    totalPurchasePrice: number
+    totalPurchasePrice: number | null
     currency: string
     isReserved: boolean
     status: PlotStatus
@@ -425,10 +438,16 @@ export async function updatePlot(
   if (patch.plotNumber !== undefined) {
     plot.plotNumber = patch.plotNumber?.trim() || undefined
   }
-  if (patch.widthFeet != null) plot.widthFeet = patch.widthFeet
-  if (patch.lengthFeet != null) plot.lengthFeet = patch.lengthFeet
-  if (patch.pricePerSqft != null) plot.pricePerSqft = patch.pricePerSqft
-  if (patch.totalPurchasePrice != null) plot.totalPurchasePrice = patch.totalPurchasePrice
+  if (patch.isIrregular !== undefined) plot.isIrregular = patch.isIrregular
+  if (patch.widthFeet !== undefined) plot.widthFeet = patch.widthFeet ?? undefined
+  if (patch.lengthFeet !== undefined) plot.lengthFeet = patch.lengthFeet ?? undefined
+  if (patch.widthFeet2 !== undefined) plot.widthFeet2 = patch.widthFeet2 ?? undefined
+  if (patch.lengthFeet2 !== undefined) plot.lengthFeet2 = patch.lengthFeet2 ?? undefined
+  if (patch.totalSquareFeetOverride !== undefined) {
+    plot.totalSquareFeetOverride = patch.totalSquareFeetOverride ?? undefined
+  }
+  if (patch.pricePerSqft !== undefined) plot.pricePerSqft = patch.pricePerSqft
+  if (patch.totalPurchasePrice !== undefined) plot.totalPurchasePrice = patch.totalPurchasePrice ?? undefined
   if (patch.currency != null) plot.currency = patch.currency.trim() || 'USD'
   if (patch.isReserved !== undefined) plot.isReserved = patch.isReserved
   if (patch.status != null) plot.status = patch.status

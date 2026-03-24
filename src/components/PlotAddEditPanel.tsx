@@ -5,6 +5,44 @@ import { plotStatusOptions } from './project-detail/constants'
 
 type PlotPanelMode = 'add' | 'edit'
 
+function computedSqFtFromDims(
+  isIrregular: boolean,
+  w1: string,
+  l1: string,
+  w2: string,
+  l2: string,
+): number | null {
+  if (isIrregular) {
+    const a = Number(w1)
+    const b = Number(l1)
+    const c = Number(w2)
+    const d = Number(l2)
+    if (
+      !w1.trim() ||
+      !l1.trim() ||
+      !w2.trim() ||
+      !l2.trim() ||
+      Number.isNaN(a) ||
+      Number.isNaN(b) ||
+      Number.isNaN(c) ||
+      Number.isNaN(d) ||
+      a <= 0 ||
+      b <= 0 ||
+      c <= 0 ||
+      d <= 0
+    ) {
+      return null
+    }
+    return a * b + c * d
+  }
+  const w = Number(w1)
+  const l = Number(l1)
+  if (!w1.trim() || !l1.trim() || Number.isNaN(w) || Number.isNaN(l) || w <= 0 || l <= 0) {
+    return null
+  }
+  return w * l
+}
+
 export function PlotAddEditPanel({
   mode,
   projectId,
@@ -26,10 +64,16 @@ export function PlotAddEditPanel({
     if (mode === 'edit' && plot) {
       return {
         plotNumber: plot.plotNumber ?? '',
-        widthFeet: String(plot.widthFeet),
-        lengthFeet: String(plot.lengthFeet),
+        isIrregular: plot.isIrregular ?? false,
+        widthFeet: plot.widthFeet != null ? String(plot.widthFeet) : '',
+        lengthFeet: plot.lengthFeet != null ? String(plot.lengthFeet) : '',
+        widthFeet2: plot.widthFeet2 != null ? String(plot.widthFeet2) : '',
+        lengthFeet2: plot.lengthFeet2 != null ? String(plot.lengthFeet2) : '',
+        totalSqFtOverride:
+          plot.totalSquareFeetOverride != null ? String(plot.totalSquareFeetOverride) : '',
         pricePerSqft: String(plot.pricePerSqft),
-        totalPurchasePrice: String(plot.totalPurchasePrice),
+        totalPurchasePrice:
+          plot.totalPurchasePrice != null ? String(plot.totalPurchasePrice) : '',
         currency: plot.currency,
         isReserved: plot.isReserved,
         status: plot.status,
@@ -45,8 +89,12 @@ export function PlotAddEditPanel({
     }
     return {
       plotNumber: '',
+      isIrregular: false,
       widthFeet: '',
       lengthFeet: '',
+      widthFeet2: '',
+      lengthFeet2: '',
+      totalSqFtOverride: '',
       pricePerSqft: '',
       totalPurchasePrice: '',
       currency: 'USD',
@@ -62,8 +110,12 @@ export function PlotAddEditPanel({
   }, [mode, plot])
 
   const [plotNumber, setPlotNumber] = useState(initial.plotNumber)
+  const [isIrregular, setIsIrregular] = useState(initial.isIrregular)
   const [widthFeet, setWidthFeet] = useState(initial.widthFeet)
   const [lengthFeet, setLengthFeet] = useState(initial.lengthFeet)
+  const [widthFeet2, setWidthFeet2] = useState(initial.widthFeet2)
+  const [lengthFeet2, setLengthFeet2] = useState(initial.lengthFeet2)
+  const [totalSqFtOverride, setTotalSqFtOverride] = useState(initial.totalSqFtOverride)
   const [pricePerSqft, setPricePerSqft] = useState(initial.pricePerSqft)
   const [totalPurchasePrice, setTotalPurchasePrice] = useState(initial.totalPurchasePrice)
   const [currency, setCurrency] = useState(initial.currency)
@@ -81,8 +133,12 @@ export function PlotAddEditPanel({
 
   useEffect(() => {
     setPlotNumber(initial.plotNumber)
+    setIsIrregular(initial.isIrregular)
     setWidthFeet(initial.widthFeet)
     setLengthFeet(initial.lengthFeet)
+    setWidthFeet2(initial.widthFeet2)
+    setLengthFeet2(initial.lengthFeet2)
+    setTotalSqFtOverride(initial.totalSqFtOverride)
     setPricePerSqft(initial.pricePerSqft)
     setTotalPurchasePrice(initial.totalPurchasePrice)
     setCurrency(initial.currency)
@@ -95,6 +151,20 @@ export function PlotAddEditPanel({
     setNotes(initial.notes)
     setIsPublicUse(initial.isPublicUse)
   }, [initial])
+
+  const computedFromDims = useMemo(
+    () => computedSqFtFromDims(isIrregular, widthFeet, lengthFeet, widthFeet2, lengthFeet2),
+    [isIrregular, widthFeet, lengthFeet, widthFeet2, lengthFeet2],
+  )
+
+  const previewEffectiveSqFt = useMemo(() => {
+    const o = totalSqFtOverride.trim()
+    if (o !== '') {
+      const n = Number(o)
+      if (!Number.isNaN(n) && n >= 0) return n
+    }
+    return computedFromDims
+  }, [totalSqFtOverride, computedFromDims])
 
   const title = mode === 'add' ? 'Add plot' : 'Edit plot'
 
@@ -112,12 +182,106 @@ export function PlotAddEditPanel({
         className="mt-4 grid gap-4 sm:grid-cols-2"
         onSubmit={async (e) => {
           e.preventDefault()
-          const w = Number(widthFeet)
-          const l = Number(lengthFeet)
           const ppsf = Number(pricePerSqft)
-          const tpp = Number(totalPurchasePrice)
-          if (!widthFeet || !lengthFeet || w <= 0 || l <= 0) return
-          if (Number.isNaN(ppsf) || ppsf < 0 || Number.isNaN(tpp) || tpp < 0) return
+          if (!pricePerSqft.trim() || Number.isNaN(ppsf) || ppsf < 0) {
+            onError('Posted price per sq ft is required and must be a valid non-negative number.')
+            return
+          }
+
+          const rawTpp = totalPurchasePrice.trim()
+          let tpp: number | undefined | null
+          if (mode === 'add') {
+            if (!rawTpp) tpp = undefined
+            else {
+              const n = Number(rawTpp)
+              if (Number.isNaN(n) || n < 0) {
+                onError('Posted total purchase must be a valid non-negative number.')
+                return
+              }
+              tpp = n
+            }
+          } else {
+            if (!rawTpp) tpp = null
+            else {
+              const n = Number(rawTpp)
+              if (Number.isNaN(n) || n < 0) {
+                onError('Posted total purchase must be a valid non-negative number.')
+                return
+              }
+              tpp = n
+            }
+          }
+
+          const rawOverride = totalSqFtOverride.trim()
+          let totalSquareFeetOverride: number | undefined | null
+          if (mode === 'add') {
+            if (!rawOverride) totalSquareFeetOverride = undefined
+            else {
+              const n = Number(rawOverride)
+              if (Number.isNaN(n) || n < 0) {
+                onError('Total square feet override must be a valid non-negative number.')
+                return
+              }
+              totalSquareFeetOverride = n
+            }
+          } else {
+            if (!rawOverride) totalSquareFeetOverride = null
+            else {
+              const n = Number(rawOverride)
+              if (Number.isNaN(n) || n < 0) {
+                onError('Total square feet override must be a valid non-negative number.')
+                return
+              }
+              totalSquareFeetOverride = n
+            }
+          }
+
+          let w1: number | undefined
+          let l1: number | undefined
+          let w2: number | undefined
+          let l2: number | undefined
+          if (isIrregular) {
+            const a = Number(widthFeet)
+            const b = Number(lengthFeet)
+            const c = Number(widthFeet2)
+            const d = Number(lengthFeet2)
+            if (
+              !widthFeet.trim() ||
+              !lengthFeet.trim() ||
+              !widthFeet2.trim() ||
+              !lengthFeet2.trim() ||
+              Number.isNaN(a) ||
+              Number.isNaN(b) ||
+              Number.isNaN(c) ||
+              Number.isNaN(d)
+            ) {
+              onError(
+                'Irregular plots require all four measurements (width 1, length 1, width 2, length 2) as positive numbers.',
+              )
+              return
+            }
+            if (a <= 0 || b <= 0 || c <= 0 || d <= 0) {
+              onError('All width and length values must be greater than zero.')
+              return
+            }
+            w1 = a
+            l1 = b
+            w2 = c
+            l2 = d
+          } else {
+            const w = Number(widthFeet)
+            const l = Number(lengthFeet)
+            if (!widthFeet.trim() || !lengthFeet.trim() || Number.isNaN(w) || Number.isNaN(l)) {
+              onError('Width and length (first set) are required as positive numbers.')
+              return
+            }
+            if (w <= 0 || l <= 0) {
+              onError('Width and length (first set) must be greater than zero.')
+              return
+            }
+            w1 = w
+            l1 = l
+          }
 
           const rawFpsf = finalPricePerSqft.trim()
           const rawFtotal = finalTotalPurchasePrice.trim()
@@ -170,8 +334,12 @@ export function PlotAddEditPanel({
               await api.createPlot({
                 projectId,
                 plotNumber: plotNumber.trim() || undefined,
-                widthFeet: w,
-                lengthFeet: l,
+                isIrregular,
+                widthFeet: w1,
+                lengthFeet: l1,
+                widthFeet2: isIrregular ? w2 : undefined,
+                lengthFeet2: isIrregular ? l2 : undefined,
+                totalSquareFeetOverride,
                 pricePerSqft: ppsf,
                 totalPurchasePrice: tpp,
                 currency: currency.trim() || 'USD',
@@ -187,8 +355,21 @@ export function PlotAddEditPanel({
             } else if (plot) {
               await api.updatePlot(plot.id, projectId, {
                 plotNumber: plotNumber.trim() === '' ? null : plotNumber.trim(),
-                widthFeet: w,
-                lengthFeet: l,
+                isIrregular,
+                ...(isIrregular
+                  ? {
+                      widthFeet: w1!,
+                      lengthFeet: l1!,
+                      widthFeet2: w2!,
+                      lengthFeet2: l2!,
+                    }
+                  : {
+                      widthFeet: w1!,
+                      lengthFeet: l1!,
+                      widthFeet2: null,
+                      lengthFeet2: null,
+                    }),
+                totalSquareFeetOverride,
                 pricePerSqft: ppsf,
                 totalPurchasePrice: tpp,
                 currency: currency.trim() || 'USD',
@@ -240,8 +421,21 @@ export function PlotAddEditPanel({
             placeholder="Buyer or entity name"
           />
         </label>
+
+        <label className="flex items-center gap-2 sm:col-span-2">
+          <input
+            type="checkbox"
+            checked={isIrregular}
+            onChange={(e) => setIsIrregular(e.target.checked)}
+            className="rounded border-slate-300"
+          />
+          <span className="text-sm text-slate-700">
+            Irregular shape (enter both pairs; calculated area = W1×L1 + W2×L2 unless you override)
+          </span>
+        </label>
+
         <label className="block">
-          <span className="text-xs font-medium text-slate-600">Width (ft)</span>
+          <span className="text-xs font-medium text-slate-600">Width 1 (ft)</span>
           <input
             required
             type="number"
@@ -253,7 +447,7 @@ export function PlotAddEditPanel({
           />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-slate-600">Length (ft)</span>
+          <span className="text-xs font-medium text-slate-600">Length 1 (ft)</span>
           <input
             required
             type="number"
@@ -264,6 +458,72 @@ export function PlotAddEditPanel({
             onChange={(e) => setLengthFeet(e.target.value)}
           />
         </label>
+
+        {isIrregular ? (
+          <>
+            <label className="block">
+              <span className="text-xs font-medium text-slate-600">Width 2 (ft)</span>
+              <input
+                required
+                type="number"
+                min={0}
+                step="0.01"
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                value={widthFeet2}
+                onChange={(e) => setWidthFeet2(e.target.value)}
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-slate-600">Length 2 (ft)</span>
+              <input
+                required
+                type="number"
+                min={0}
+                step="0.01"
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                value={lengthFeet2}
+                onChange={(e) => setLengthFeet2(e.target.value)}
+              />
+            </label>
+          </>
+        ) : null}
+
+        <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 sm:col-span-2">
+          <p className="text-xs font-medium text-slate-600">Area</p>
+          <p className="mt-1 text-sm text-slate-800">
+            Calculated from dimensions
+            {isIrregular ? ' (W1×L1 + W2×L2)' : ''}:{' '}
+            {computedFromDims != null
+              ? `${computedFromDims.toLocaleString(undefined, { maximumFractionDigits: 2 })} sq ft`
+              : '—'}
+          </p>
+          {previewEffectiveSqFt != null && totalSqFtOverride.trim() !== '' && (
+            <p className="mt-1 text-sm font-medium text-teal-800">
+              Effective (with override):{' '}
+              {previewEffectiveSqFt.toLocaleString(undefined, { maximumFractionDigits: 2 })} sq ft
+            </p>
+          )}
+        </div>
+
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-medium text-slate-600">
+            Total square feet override (optional)
+          </span>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            value={totalSqFtOverride}
+            onChange={(e) => setTotalSqFtOverride(e.target.value)}
+            placeholder={
+              computedFromDims != null
+                ? `Leave empty to use ${computedFromDims.toFixed(2)} sq ft`
+                : 'Override total sq ft if needed'
+            }
+          />
+        </label>
+
         <label className="block sm:col-span-2">
           <span className="text-xs font-medium text-slate-600">
             Posted price / sq ft
@@ -280,10 +540,9 @@ export function PlotAddEditPanel({
         </label>
         <label className="block sm:col-span-2">
           <span className="text-xs font-medium text-slate-600">
-            Posted total purchase price
+            Posted total purchase price (optional)
           </span>
           <input
-            required
             type="number"
             min={0}
             step="0.01"

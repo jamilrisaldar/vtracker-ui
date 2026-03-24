@@ -76,7 +76,11 @@ export function loadDb(): MockDatabase {
       phases: (parsed.phases ?? []).map(migratePhase),
       plots: (parsed.plots ?? []).map((p) => {
         const lp = p as LandPlot
-        return { ...lp, isPublicUse: lp.isPublicUse ?? false }
+        return {
+          ...lp,
+          isPublicUse: lp.isPublicUse ?? false,
+          isIrregular: lp.isIrregular ?? false,
+        }
       }),
     }
   } catch {

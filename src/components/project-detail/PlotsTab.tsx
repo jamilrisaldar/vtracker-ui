@@ -2,12 +2,9 @@ import { useState } from 'react'
 import * as api from '../../api/dataApi'
 import type { LandPlot } from '../../types'
 import { formatMoney } from '../../utils/format'
+import { plotDimensionsLabel, plotEffectiveSqFt } from '../../utils/landPlotDisplay'
 import { PlotAddEditPanel } from '../PlotAddEditPanel'
 import { plotStatusLabel } from './constants'
-
-function sqFt(plot: LandPlot): number {
-  return plot.widthFeet * plot.lengthFeet
-}
 
 function trunc(s: string | undefined, max: number): string {
   if (!s) return '—'
@@ -39,7 +36,7 @@ export function PlotsTab({
         <div>
           <h2 className="text-lg font-medium text-slate-900">Land plots</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Track dimensions (feet), asking price per sq ft, purchase price, and sale status.
+            Track dimensions (feet), area (regular or irregular W1×L1 + W2×L2), pricing, and sale status.
           </p>
         </div>
         <button
@@ -100,16 +97,22 @@ export function PlotsTab({
                 </td>
               </tr>
             ) : (
-              plots.map((p) => (
+              plots.map((p) => {
+                const sqFt = plotEffectiveSqFt(p)
+                return (
                 <tr key={p.id} className="border-b border-slate-100">
                   <td className="px-4 py-3 font-medium text-slate-900">
                     {p.plotNumber ?? '—'}
                   </td>
                   <td className="px-4 py-3 font-mono text-slate-800">
-                    {p.widthFeet} × {p.lengthFeet}
+                    {plotDimensionsLabel(p)}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
-                    {sqFt(p).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    {sqFt != null
+                      ? sqFt.toLocaleString(undefined, {
+                          maximumFractionDigits: 2,
+                        })
+                      : '—'}
                   </td>
                   <td
                     className="max-w-[140px] truncate px-4 py-3 text-slate-600"
@@ -119,7 +122,9 @@ export function PlotsTab({
                   </td>
                   <td className="px-4 py-3">{formatMoney(p.pricePerSqft, p.currency)}</td>
                   <td className="px-4 py-3 font-medium">
-                    {formatMoney(p.totalPurchasePrice, p.currency)}
+                    {p.totalPurchasePrice != null
+                      ? formatMoney(p.totalPurchasePrice, p.currency)
+                      : '—'}
                   </td>
                   <td className="px-4 py-3 text-slate-700">
                     {p.finalPricePerSqft != null
@@ -190,7 +195,8 @@ export function PlotsTab({
                     </div>
                   </td>
                 </tr>
-              ))
+                )
+              })
             )}
           </tbody>
         </table>

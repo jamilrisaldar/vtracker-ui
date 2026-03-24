@@ -48,10 +48,18 @@ export interface LandPlot {
   projectId: string
   /** Optional label from survey or layout (e.g. "A-12"). */
   plotNumber?: string
-  widthFeet: number
-  lengthFeet: number
+  /** First width × length (feet). Required for regular plots; irregular plots use this with pair 2. */
+  widthFeet?: number
+  lengthFeet?: number
+  /** Second width × length (feet). Set for irregular plots; computed area = W1×L1 + W2×L2 unless overridden. */
+  widthFeet2?: number
+  lengthFeet2?: number
+  isIrregular: boolean
+  /** When set, displayed sq ft uses this instead of computed W×L. */
+  totalSquareFeetOverride?: number
   pricePerSqft: number
-  totalPurchasePrice: number
+  /** Posted total purchase (optional). */
+  totalPurchasePrice?: number
   currency: string
   isReserved: boolean
   status: PlotStatus
