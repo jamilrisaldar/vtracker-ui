@@ -236,30 +236,57 @@ export function PlotsTab({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="sticky left-0 z-[3] border-r border-slate-200/90 bg-slate-50 px-4 py-3 text-left shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">
-                Plot #
-              </th>
-              <th className="px-4 py-3">W × L (ft)</th>
-              <th className="px-4 py-3">Sq ft</th>
-              <th className="min-w-[12rem] max-w-[20rem] px-4 py-3">Details</th>
-              <th className="px-4 py-3">Posted $/ft</th>
-              <th className="px-4 py-3">Posted total</th>
-              <th className="px-4 py-3">Final $/ft</th>
-              <th className="px-4 py-3">Final total</th>
-              <th className="px-4 py-3">Party</th>
-              <th className="px-4 py-3">Curr.</th>
-              <th className="px-4 py-3">Public</th>
-              <th className="px-4 py-3">Res.</th>
-              <th className="max-w-[100px] px-4 py-3">Notes</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="max-h-[min(70vh,28rem)] overflow-auto overscroll-contain">
+          <table className="min-w-full text-left text-sm">
+            <thead className="text-xs uppercase text-slate-500">
+              <tr>
+                <th className="sticky top-0 left-0 z-[5] border-b border-r border-slate-200/90 bg-slate-50 px-4 py-3 text-left shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">
+                  Plot #
+                </th>
+                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  W × L (ft)
+                </th>
+                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  Sq ft
+                </th>
+                <th className="sticky top-0 z-[2] min-w-[12rem] max-w-[20rem] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  Details
+                </th>
+                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  Posted $/ft
+                </th>
+                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  Posted total
+                </th>
+                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  Final $/ft
+                </th>
+                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  Final total
+                </th>
+                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  Party
+                </th>
+                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  Curr.
+                </th>
+                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  Public
+                </th>
+                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  Res.
+                </th>
+                <th className="sticky top-0 z-[2] max-w-[100px] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  Notes
+                </th>
+                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  Status
+                </th>
+                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
             {plots.length === 0 ? (
               <tr>
                 <td colSpan={15} className="px-4 py-8 text-center text-slate-500">
@@ -378,8 +405,9 @@ export function PlotsTab({
                 )
               })
             )}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )
