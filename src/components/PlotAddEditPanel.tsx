@@ -48,10 +48,40 @@ function computedSqFtFromFormStrings(
   })
 }
 
+function landPlotToFormInitial(source: LandPlot) {
+  return {
+    plotNumber: source.plotNumber ?? '',
+    isIrregular: source.isIrregular ?? false,
+    widthFeet: source.widthFeet != null ? String(source.widthFeet) : '',
+    lengthFeet: source.lengthFeet != null ? String(source.lengthFeet) : '',
+    widthFeet2: source.widthFeet2 != null ? String(source.widthFeet2) : '',
+    lengthFeet2: source.lengthFeet2 != null ? String(source.lengthFeet2) : '',
+    totalSqFtOverride:
+      source.totalSquareFeetOverride != null && source.totalSquareFeetOverride > 0
+        ? String(source.totalSquareFeetOverride)
+        : '',
+    pricePerSqft: String(source.pricePerSqft),
+    totalPurchasePrice:
+      source.totalPurchasePrice != null ? String(source.totalPurchasePrice) : '',
+    currency: source.currency,
+    isReserved: source.isReserved,
+    status: source.status,
+    plotDetails: source.plotDetails ?? '',
+    purchaseParty: source.purchaseParty ?? '',
+    finalPricePerSqft:
+      source.finalPricePerSqft != null ? String(source.finalPricePerSqft) : '',
+    finalTotalPurchasePrice:
+      source.finalTotalPurchasePrice != null ? String(source.finalTotalPurchasePrice) : '',
+    notes: source.notes ?? '',
+    isPublicUse: source.isPublicUse,
+  }
+}
+
 export function PlotAddEditPanel({
   mode,
   projectId,
   plot,
+  copyFrom,
   onClose,
   onRefresh,
   onError,
@@ -60,6 +90,7 @@ export function PlotAddEditPanel({
   mode: PlotPanelMode
   projectId: string
   plot?: LandPlot
+  copyFrom?: LandPlot
   onClose: () => void
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
@@ -67,29 +98,14 @@ export function PlotAddEditPanel({
 }) {
   const initial = useMemo(() => {
     if (mode === 'edit' && plot) {
+      return landPlotToFormInitial(plot)
+    }
+    if (mode === 'add' && copyFrom) {
+      const base = landPlotToFormInitial(copyFrom)
+      const pn = copyFrom.plotNumber?.trim()
       return {
-        plotNumber: plot.plotNumber ?? '',
-        isIrregular: plot.isIrregular ?? false,
-        widthFeet: plot.widthFeet != null ? String(plot.widthFeet) : '',
-        lengthFeet: plot.lengthFeet != null ? String(plot.lengthFeet) : '',
-        widthFeet2: plot.widthFeet2 != null ? String(plot.widthFeet2) : '',
-        lengthFeet2: plot.lengthFeet2 != null ? String(plot.lengthFeet2) : '',
-        totalSqFtOverride:
-          plot.totalSquareFeetOverride != null ? String(plot.totalSquareFeetOverride) : '',
-        pricePerSqft: String(plot.pricePerSqft),
-        totalPurchasePrice:
-          plot.totalPurchasePrice != null ? String(plot.totalPurchasePrice) : '',
-        currency: plot.currency,
-        isReserved: plot.isReserved,
-        status: plot.status,
-        plotDetails: plot.plotDetails ?? '',
-        purchaseParty: plot.purchaseParty ?? '',
-        finalPricePerSqft:
-          plot.finalPricePerSqft != null ? String(plot.finalPricePerSqft) : '',
-        finalTotalPurchasePrice:
-          plot.finalTotalPurchasePrice != null ? String(plot.finalTotalPurchasePrice) : '',
-        notes: plot.notes ?? '',
-        isPublicUse: plot.isPublicUse,
+        ...base,
+        plotNumber: pn ? `${pn} (copy)` : '',
       }
     }
     return {
@@ -112,7 +128,7 @@ export function PlotAddEditPanel({
       notes: '',
       isPublicUse: false,
     }
-  }, [mode, plot])
+  }, [mode, plot, copyFrom])
 
   const [plotNumber, setPlotNumber] = useState(initial.plotNumber)
   const [isIrregular, setIsIrregular] = useState(initial.isIrregular)
@@ -125,7 +141,7 @@ export function PlotAddEditPanel({
   const [totalPurchasePrice, setTotalPurchasePrice] = useState(initial.totalPurchasePrice)
   /** When false, posted total follows effective area × posted $/sq ft. */
   const [postedTotalManual, setPostedTotalManual] = useState(
-    () => mode === 'edit' && initial.totalPurchasePrice.trim() !== '',
+    () => initial.totalPurchasePrice.trim() !== '',
   )
   const [currency, setCurrency] = useState(initial.currency)
   const [isReserved, setIsReserved] = useState(initial.isReserved)
@@ -150,7 +166,7 @@ export function PlotAddEditPanel({
     setTotalSqFtOverride(initial.totalSqFtOverride)
     setPricePerSqft(initial.pricePerSqft)
     setTotalPurchasePrice(initial.totalPurchasePrice)
-    setPostedTotalManual(mode === 'edit' && initial.totalPurchasePrice.trim() !== '')
+    setPostedTotalManual(initial.totalPurchasePrice.trim() !== '')
     setCurrency(initial.currency)
     setIsReserved(initial.isReserved)
     setStatus(initial.status)
@@ -204,7 +220,8 @@ export function PlotAddEditPanel({
     setTotalPurchasePrice(formatPostedTotalInput(autoPostedTotalPurchase))
   }, [autoPostedTotalPurchase, postedTotalManual])
 
-  const title = mode === 'add' ? 'Add plot' : 'Edit plot'
+  const title =
+    mode === 'add' ? (copyFrom ? 'Add plot (copy)' : 'Add plot') : 'Edit plot'
 
   return (
     <div
@@ -216,6 +233,11 @@ export function PlotAddEditPanel({
         .join(' ')}
     >
       <h2 className="text-lg font-medium text-slate-900">{title}</h2>
+      {mode === 'add' && copyFrom ? (
+        <p className="mt-1 text-sm text-slate-600">
+          Pre-filled from the selected plot. Adjust as needed, then save to create a new plot.
+        </p>
+      ) : null}
       <form
         className="mt-4 grid gap-4 sm:grid-cols-2"
         onSubmit={async (e) => {

@@ -1,4 +1,10 @@
-import type { DocumentKind, PhaseStatus, PlotStatus, ProjectStatus } from '../../types'
+import type {
+  DocumentKind,
+  LandPlot,
+  PhaseStatus,
+  PlotStatus,
+  ProjectStatus,
+} from '../../types'
 
 export const tabs = [
   { id: 'overview', label: 'Overview' },
@@ -40,4 +46,41 @@ export const docKindOptions: { value: DocumentKind; label: string }[] = [
 
 export function plotStatusLabel(status: PlotStatus): string {
   return plotStatusOptions.find((o) => o.value === status)?.label ?? status
+}
+
+const PLOT_STATUS_ROW_BG: Record<PlotStatus, string> = {
+  open: 'bg-white hover:bg-slate-50/90',
+  negotiating: 'bg-sky-50 hover:bg-sky-100/75',
+  conditional_sale: 'bg-violet-50 hover:bg-violet-100/75',
+  sold: 'bg-emerald-50 hover:bg-emerald-100/75',
+}
+
+/** Matches row tone for sticky Plot # cells (use with `group` on the table row). */
+const PLOT_STATUS_STICKY_CELL_BG: Record<PlotStatus, string> = {
+  open: 'bg-white group-hover:bg-slate-50/90',
+  negotiating: 'bg-sky-50 group-hover:bg-sky-100/75',
+  conditional_sale: 'bg-violet-50 group-hover:bg-violet-100/75',
+  sold: 'bg-emerald-50 group-hover:bg-emerald-100/75',
+}
+
+/** Table row classes: background by `status`, amber left stripe when `isReserved`. */
+export function plotTableRowClassName(p: Pick<LandPlot, 'status' | 'isReserved'>): string {
+  return [
+    'group border-b border-slate-100 transition-colors',
+    PLOT_STATUS_ROW_BG[p.status] ?? PLOT_STATUS_ROW_BG.open,
+  ].join(' ')
+}
+
+/** Sticky first column (Plot #): opaque bg + shadow so scrolled content does not show through. */
+export function plotTableStickyPlotNumberCellClassName(
+  p: Pick<LandPlot, 'status' | 'isReserved'>,
+): string {
+  return [
+    'sticky left-0 z-[1] px-4 py-3 font-medium text-slate-900',
+    'border-r border-slate-200/90 shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]',
+    PLOT_STATUS_STICKY_CELL_BG[p.status] ?? PLOT_STATUS_STICKY_CELL_BG.open,
+    p.isReserved ? 'border-l-4 border-l-amber-500' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
 }

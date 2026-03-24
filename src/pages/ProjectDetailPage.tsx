@@ -42,6 +42,9 @@ export function ProjectDetailPage() {
   const [report, setReport] = useState<ProjectReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
+  const [deleteProjectOpen, setDeleteProjectOpen] = useState(false)
+  const [deleteProjectNameInput, setDeleteProjectNameInput] = useState('')
+  const [deleteProjectBusy, setDeleteProjectBusy] = useState(false)
 
   const load = useCallback(async () => {
     if (!projectId) return
@@ -112,8 +115,82 @@ export function ProjectDetailPage() {
     )
   }
 
+  const deleteProjectNameOk = deleteProjectNameInput === project.name
+  const deleteProjectCanSubmit = deleteProjectNameOk && !deleteProjectBusy
+
   return (
     <div className="mx-auto max-w-6xl print:max-w-none">
+      {deleteProjectOpen ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-project-title"
+        >
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+            <h3 id="delete-project-title" className="text-lg font-medium text-slate-900">
+              Delete project
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              This will permanently remove this project and all related phases, plots, vendors,
+              invoices, payments, and documents. This cannot be undone.
+            </p>
+            <p className="mt-3 text-sm text-slate-600">
+              Type the project name exactly as shown below to confirm:
+            </p>
+            <p className="mt-2 rounded-lg bg-slate-100 px-3 py-2 font-medium text-slate-900">
+              {project.name}
+            </p>
+            <label className="mt-4 block">
+              <span className="text-xs font-medium text-slate-600">Project name</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                value={deleteProjectNameInput}
+                onChange={(e) => setDeleteProjectNameInput(e.target.value)}
+                placeholder={project.name}
+                autoComplete="off"
+                autoFocus
+              />
+            </label>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                disabled={deleteProjectBusy}
+                onClick={() => {
+                  setDeleteProjectOpen(false)
+                  setDeleteProjectNameInput('')
+                  setDeleteProjectBusy(false)
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                disabled={!deleteProjectCanSubmit}
+                onClick={() => {
+                  if (!deleteProjectCanSubmit) return
+                  setDeleteProjectBusy(true)
+                  setErr(null)
+                  void (async () => {
+                    try {
+                      await api.deleteProject(projectId)
+                      navigate('/projects')
+                    } catch (e) {
+                      setErr(e instanceof Error ? e.message : 'Delete failed.')
+                      setDeleteProjectBusy(false)
+                    }
+                  })()
+                }}
+              >
+                {deleteProjectBusy ? 'Deleting…' : 'Delete project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="print:hidden">
         <Link
           to="/projects"
@@ -134,20 +211,8 @@ export function ProjectDetailPage() {
           type="button"
           className="self-start rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-50"
           onClick={() => {
-            if (
-              !confirm(
-                'Delete this project and all phases, plots, vendors, invoices, payments, and documents?',
-              )
-            )
-              return
-            void (async () => {
-              try {
-                await api.deleteProject(projectId)
-                navigate('/projects')
-              } catch (e) {
-                setErr(e instanceof Error ? e.message : 'Delete failed.')
-              }
-            })()
+            setDeleteProjectNameInput('')
+            setDeleteProjectOpen(true)
           }}
         >
           Delete project
