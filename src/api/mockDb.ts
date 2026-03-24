@@ -1,4 +1,6 @@
 import type {
+  Account,
+  AccountTransaction,
   Invoice,
   Payment,
   Phase,
@@ -18,6 +20,8 @@ export interface MockDatabase {
   vendors: Vendor[]
   invoices: Invoice[]
   payments: Payment[]
+  accounts: Account[]
+  accountTransactions: AccountTransaction[]
   documents: ProjectDocument[]
   /** Maps session token → user id */
   tokens: Record<string, string>
@@ -31,6 +35,8 @@ function emptyDb(): MockDatabase {
     vendors: [],
     invoices: [],
     payments: [],
+    accounts: [],
+    accountTransactions: [],
     documents: [],
     tokens: {},
   }
@@ -53,10 +59,17 @@ export function loadDb(): MockDatabase {
     const parsed = JSON.parse(raw) as MockDatabase & {
       phases?: (Phase & { order?: number })[]
     }
+    const migratedAccounts = (parsed.accounts ?? []).map((a) => {
+      const ac = a as Account & { userId?: string }
+      const { userId: _drop, ...rest } = ac
+      return rest as Account
+    })
     return {
       ...emptyDb(),
       ...parsed,
       tokens: parsed.tokens ?? {},
+      accounts: migratedAccounts,
+      accountTransactions: parsed.accountTransactions ?? [],
       phases: (parsed.phases ?? []).map(migratePhase),
     }
   } catch {

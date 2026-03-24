@@ -3,6 +3,8 @@
  * Requires cookie session + CSRF on mutating requests.
  */
 import type {
+  Account,
+  AccountTransaction,
   DocumentKind,
   Invoice,
   InvoiceStatus,
@@ -367,6 +369,92 @@ export async function createPayment(input: {
 export async function deletePayment(paymentId: string, projectId: string): Promise<void> {
   await apiRequest<void>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/payments/${encodeURIComponent(paymentId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+// —— Ledger accounts (user-wide) ——
+
+export async function listAccounts(): Promise<Account[]> {
+  return apiRequest<Account[]>('/api/v1/accounts')
+}
+
+export async function createAccount(input: {
+  kind: 'bank' | 'cash'
+  name: string
+  currency?: string
+  accountLocation?: string
+  projectId?: string
+}): Promise<Account> {
+  return apiRequest<Account>('/api/v1/accounts', {
+    method: 'POST',
+    body: JSON.stringify({
+      kind: input.kind,
+      name: input.name.trim(),
+      currency: input.currency?.trim() || 'USD',
+      accountLocation: input.accountLocation?.trim(),
+      projectId: input.projectId,
+    }),
+  })
+}
+
+export async function updateAccount(
+  accountId: string,
+  patch: Partial<Pick<Account, 'kind' | 'name' | 'currency' | 'accountLocation' | 'projectId'>>,
+): Promise<Account> {
+  const body: Record<string, unknown> = {}
+  if (patch.kind != null) body.kind = patch.kind
+  if (patch.name != null) body.name = patch.name.trim()
+  if (patch.currency != null) body.currency = patch.currency.trim()
+  if (patch.accountLocation !== undefined) body.accountLocation = patch.accountLocation?.trim() ?? null
+  if (patch.projectId !== undefined) body.projectId = patch.projectId
+  return apiRequest<Account>(`/api/v1/accounts/${encodeURIComponent(accountId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+}
+
+export async function deleteAccount(accountId: string): Promise<void> {
+  await apiRequest<void>(`/api/v1/accounts/${encodeURIComponent(accountId)}`, { method: 'DELETE' })
+}
+
+export async function listAccountTransactions(accountId: string): Promise<AccountTransaction[]> {
+  return apiRequest<AccountTransaction[]>(
+    `/api/v1/accounts/${encodeURIComponent(accountId)}/transactions`,
+  )
+}
+
+export async function createAccountTransaction(input: {
+  accountId: string
+  amount: number
+  entryType: 'debit' | 'credit'
+  description?: string
+  occurredOn: string
+  paymentId?: string
+  projectId?: string
+}): Promise<AccountTransaction> {
+  return apiRequest<AccountTransaction>(
+    `/api/v1/accounts/${encodeURIComponent(input.accountId)}/transactions`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        amount: input.amount,
+        entryType: input.entryType,
+        description: input.description?.trim(),
+        occurredOn: input.occurredOn,
+        paymentId: input.paymentId,
+        projectId: input.projectId,
+      }),
+    },
+  )
+}
+
+export async function deleteAccountTransaction(
+  transactionId: string,
+  accountId: string,
+): Promise<void> {
+  await apiRequest<void>(
+    `/api/v1/accounts/${encodeURIComponent(accountId)}/transactions/${encodeURIComponent(transactionId)}`,
     { method: 'DELETE' },
   )
 }

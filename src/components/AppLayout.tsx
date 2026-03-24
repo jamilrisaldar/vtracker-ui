@@ -3,6 +3,7 @@ import { useAuth } from '../auth/useAuth'
 
 const nav = [
   { to: '/projects', label: 'Projects' },
+  { to: '/accounts', label: 'Accounts' },
 ]
 
 export function AppLayout() {

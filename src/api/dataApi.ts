@@ -2,6 +2,8 @@
  * Domain data: real backend when `VITE_USE_BACKEND_AUTH` is set, else local mock.
  */
 import type {
+  Account,
+  AccountTransaction,
   DocumentKind,
   Invoice,
   InvoiceStatus,
@@ -237,6 +239,61 @@ export async function deletePayment(
     return backend.deletePayment(paymentId, projectId)
   }
   return mock.deletePayment(paymentId, projectId)
+}
+
+export async function listAccounts(): Promise<Account[]> {
+  if (isBackendAuthEnabled()) return backend.listAccounts()
+  return mock.listAccounts()
+}
+
+export async function createAccount(input: {
+  kind: 'bank' | 'cash'
+  name: string
+  currency?: string
+  accountLocation?: string
+  projectId?: string
+}): Promise<Account> {
+  if (isBackendAuthEnabled()) return backend.createAccount(input)
+  return mock.createAccount(input)
+}
+
+export async function updateAccount(
+  accountId: string,
+  patch: Partial<Pick<Account, 'kind' | 'name' | 'currency' | 'accountLocation' | 'projectId'>>,
+): Promise<Account> {
+  if (isBackendAuthEnabled()) return backend.updateAccount(accountId, patch)
+  return mock.updateAccount(accountId, patch)
+}
+
+export async function deleteAccount(accountId: string): Promise<void> {
+  if (isBackendAuthEnabled()) return backend.deleteAccount(accountId)
+  return mock.deleteAccount(accountId)
+}
+
+export async function listAccountTransactions(accountId: string): Promise<AccountTransaction[]> {
+  if (isBackendAuthEnabled()) return backend.listAccountTransactions(accountId)
+  return mock.listAccountTransactions(accountId)
+}
+
+export async function createAccountTransaction(input: {
+  accountId: string
+  amount: number
+  entryType: 'debit' | 'credit'
+  description?: string
+  occurredOn: string
+  paymentId?: string
+  projectId?: string
+}): Promise<AccountTransaction> {
+  if (isBackendAuthEnabled()) return backend.createAccountTransaction(input)
+  return mock.createAccountTransaction(input)
+}
+
+export async function deleteAccountTransaction(
+  transactionId: string,
+  accountId: string,
+): Promise<void> {
+  if (isBackendAuthEnabled()) return backend.deleteAccountTransaction(transactionId, accountId)
+  return mock.deleteAccountTransaction(transactionId, accountId)
 }
 
 export async function listDocuments(projectId: string): Promise<ProjectDocument[]> {

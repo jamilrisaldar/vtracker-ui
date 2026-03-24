@@ -1,4 +1,6 @@
 import type {
+  Account,
+  AccountTransaction,
   AuthSession,
   DocumentKind,
   Invoice,
@@ -224,6 +226,12 @@ export async function deleteProject(projectId: string): Promise<void> {
   db.invoices = db.invoices.filter((i) => i.projectId !== projectId)
   db.payments = db.payments.filter(
     (p) => p.projectId !== projectId && !invIds.has(p.invoiceId),
+  )
+  db.accounts = db.accounts.map((a) =>
+    a.projectId === projectId ? { ...a, projectId: undefined } : a,
+  )
+  db.accountTransactions = db.accountTransactions.map((t) =>
+    t.projectId === projectId ? { ...t, projectId: undefined } : t,
   )
   db.documents = db.documents.filter((d) => d.projectId !== projectId)
   saveDb(db)
@@ -586,6 +594,9 @@ export async function deletePayment(paymentId: string, _projectId?: string): Pro
   if (!proj || proj.userId !== userId) throw new Error('Not found')
   const inv = db.invoices.find((i) => i.id === pay.invoiceId)
   db.payments = db.payments.filter((x) => x.id !== paymentId)
+  db.accountTransactions = db.accountTransactions.map((t) =>
+    t.paymentId === paymentId ? { ...t, paymentId: undefined } : t,
+  )
   if (inv) {
     const paidTotal = db.payments
       .filter((p) => p.invoiceId === inv.id)
@@ -596,6 +607,175 @@ export async function deletePayment(paymentId: string, _projectId?: string): Pro
   }
   db.documents = db.documents.filter((d) => d.paymentId !== paymentId)
   proj.updatedAt = nowIso()
+  saveDb(db)
+}
+
+// —— Ledger accounts (system-wide in mock store) ——
+
+export async function listAccounts(): Promise<Account[]> {
+  await delay()
+  getUserIdOrThrow()
+  return loadDb()
+    .accounts.slice()
+    .sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name))
+}
+
+export async function createAccount(input: {
+  kind: 'bank' | 'cash'
+  name: string
+  currency?: string
+  accountLocation?: string
+  projectId?: string
+}): Promise<Account> {
+  await delay()
+  const userId = getUserIdOrThrow()
+  const db = loadDb()
+  let projectId: string | undefined = input.projectId
+  if (projectId) {
+    const project = db.projects.find((p) => p.id === projectId && p.userId === userId)
+    if (!project) throw new Error('Invalid project')
+  }
+  const acc: Account = {
+    id: id('acc'),
+    projectId,
+    kind: input.kind,
+    name: input.name.trim(),
+    accountLocation: input.accountLocation?.trim() || undefined,
+    currency: input.currency?.trim() || 'USD',
+    createdAt: nowIso(),
+  }
+  db.accounts.push(acc)
+  if (projectId) {
+    const proj = db.projects.find((p) => p.id === projectId)
+    if (proj) proj.updatedAt = nowIso()
+  }
+  saveDb(db)
+  return acc
+}
+
+export async function updateAccount(
+  accountId: string,
+  patch: Partial<Pick<Account, 'kind' | 'name' | 'currency' | 'accountLocation' | 'projectId'>>,
+): Promise<Account> {
+  await delay()
+  const userId = getUserIdOrThrow()
+  const db = loadDb()
+  const acc = db.accounts.find((x) => x.id === accountId)
+  if (!acc) throw new Error('Not found')
+  if (patch.projectId !== undefined) {
+    if (patch.projectId === null || patch.projectId === '') {
+      acc.projectId = undefined
+    } else {
+      const project = db.projects.find((p) => p.id === patch.projectId && p.userId === userId)
+      if (!project) throw new Error('Invalid project')
+      acc.projectId = patch.projectId
+    }
+  }
+  if (patch.kind != null) acc.kind = patch.kind
+  if (patch.name != null) acc.name = patch.name.trim()
+  if (patch.currency != null) acc.currency = patch.currency.trim()
+  if (patch.accountLocation !== undefined)
+    acc.accountLocation = patch.accountLocation?.trim() || undefined
+  if (acc.projectId) {
+    const proj = db.projects.find((p) => p.id === acc.projectId)
+    if (proj) proj.updatedAt = nowIso()
+  }
+  saveDb(db)
+  return acc
+}
+
+export async function deleteAccount(accountId: string): Promise<void> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const acc = db.accounts.find((x) => x.id === accountId)
+  if (!acc) throw new Error('Not found')
+  db.accounts = db.accounts.filter((x) => x.id !== accountId)
+  db.accountTransactions = db.accountTransactions.filter((t) => t.accountId !== accountId)
+  if (acc.projectId) {
+    const proj = db.projects.find((p) => p.id === acc.projectId)
+    if (proj) proj.updatedAt = nowIso()
+  }
+  saveDb(db)
+}
+
+export async function listAccountTransactions(accountId: string): Promise<AccountTransaction[]> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const acc = db.accounts.find((a) => a.id === accountId)
+  if (!acc) throw new Error('Not found')
+  return db.accountTransactions
+    .filter((t) => t.accountId === accountId)
+    .sort((a, b) => b.occurredOn.localeCompare(a.occurredOn) || b.createdAt.localeCompare(a.createdAt))
+}
+
+export async function createAccountTransaction(input: {
+  accountId: string
+  amount: number
+  entryType: 'debit' | 'credit'
+  description?: string
+  occurredOn: string
+  paymentId?: string
+  projectId?: string
+}): Promise<AccountTransaction> {
+  await delay()
+  const userId = getUserIdOrThrow()
+  const db = loadDb()
+  const acc = db.accounts.find((a) => a.id === input.accountId)
+  if (!acc) throw new Error('Account not found')
+
+  let txnProjectId: string | undefined = input.projectId
+  if (input.paymentId) {
+    const pay = db.payments.find((p) => p.id === input.paymentId)
+    if (!pay) throw new Error('Payment not found')
+    const proj = db.projects.find((p) => p.id === pay.projectId && p.userId === userId)
+    if (!proj) throw new Error('Payment not found')
+    txnProjectId = pay.projectId
+    if (db.accountTransactions.some((t) => t.paymentId === input.paymentId)) {
+      throw new Error('A transaction is already linked to this payment')
+    }
+  } else if (txnProjectId) {
+    const project = db.projects.find((p) => p.id === txnProjectId && p.userId === userId)
+    if (!project) throw new Error('Invalid project')
+  }
+
+  const tx: AccountTransaction = {
+    id: id('atx'),
+    projectId: txnProjectId,
+    accountId: input.accountId,
+    amount: input.amount,
+    entryType: input.entryType,
+    description: input.description?.trim() || undefined,
+    occurredOn: input.occurredOn,
+    paymentId: input.paymentId,
+    createdAt: nowIso(),
+  }
+  db.accountTransactions.push(tx)
+  if (txnProjectId) {
+    const proj = db.projects.find((p) => p.id === txnProjectId)
+    if (proj) proj.updatedAt = nowIso()
+  }
+  saveDb(db)
+  return tx
+}
+
+export async function deleteAccountTransaction(
+  transactionId: string,
+  accountId: string,
+): Promise<void> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const acc = db.accounts.find((a) => a.id === accountId)
+  if (!acc) throw new Error('Not found')
+  const tx = db.accountTransactions.find((x) => x.id === transactionId && x.accountId === accountId)
+  if (!tx) throw new Error('Not found')
+  db.accountTransactions = db.accountTransactions.filter((x) => x.id !== transactionId)
+  if (tx.projectId) {
+    const proj = db.projects.find((p) => p.id === tx.projectId)
+    if (proj) proj.updatedAt = nowIso()
+  }
   saveDb(db)
 }
 

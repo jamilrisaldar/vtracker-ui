@@ -78,6 +78,28 @@ export interface Payment {
   comments?: string
 }
 
+export interface Account {
+  id: string
+  projectId?: string
+  kind: 'bank' | 'cash'
+  name: string
+  accountLocation?: string
+  currency: string
+  createdAt: string
+}
+
+export interface AccountTransaction {
+  id: string
+  projectId?: string
+  accountId: string
+  amount: number
+  entryType: 'debit' | 'credit'
+  description?: string
+  occurredOn: string
+  paymentId?: string
+  createdAt: string
+}
+
 export interface ProjectDocument {
   id: string
   projectId: string
