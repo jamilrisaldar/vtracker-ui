@@ -55,7 +55,9 @@ export interface LandPlot {
   widthFeet2?: number
   lengthFeet2?: number
   isIrregular: boolean
-  /** When set, displayed sq ft uses this instead of computed W×L. */
+  /** Area from dimensions at last save (W×L or W1×L1+W2×L2); not affected by override. */
+  calculatedSquareFeet?: number
+  /** When set, displayed sq ft uses this instead of `calculatedSquareFeet`. */
   totalSquareFeetOverride?: number
   pricePerSqft: number
   /** Posted total purchase (optional). */

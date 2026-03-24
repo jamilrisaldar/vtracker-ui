@@ -15,4 +15,6 @@ alwaysApply: true
 - Create appropriate unit tests for code, for existing code that does not have unit tests and on all newly generated code. 
 - Structure the code for maintainability
 - Ensure all processes that are started during executing a prompt are properly terminated.
+- Anywhere currency field is used default to INR (Indian Rupee)
+- When display currency information, ensure correct currency symbol is used
 

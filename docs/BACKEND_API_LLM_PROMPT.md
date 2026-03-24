@@ -91,7 +91,7 @@ The backend **already exposes** (per existing OpenAPI / Swagger):
 - `id`, `projectId`, `vendorId`
 - `invoiceNumber` (string)
 - `amount` (number; use decimal in DB)
-- `currency` (string; default `"USD"` if omitted on create)
+- `currency` (string; default `"INR"` if omitted on create)
 - `issuedDate`, optional `dueDate` (date strings)
 - `status` — `InvoiceStatus`
 
@@ -150,7 +150,7 @@ Implement routes so the frontend can replace each mock function below.
 | Operation | Behavior |
 |-----------|----------|
 | List | `GET .../projects/:projectId/invoices` — sort by `issuedDate` desc. |
-| Create | `POST` — `vendorId` must belong to same project. Defaults: `currency`=`USD`, `status`=`sent` unless specified. Update project `updatedAt`. |
+| Create | `POST` — `vendorId` must belong to same project. Defaults: `currency`=`INR`, `status`=`sent` unless specified. Update project `updatedAt`. |
 | Update | `PATCH` — partial invoice fields. Update project `updatedAt`. |
 | Delete | `DELETE` — remove invoice and its **payments** and clear document links to that invoice. Update project `updatedAt`. |
 

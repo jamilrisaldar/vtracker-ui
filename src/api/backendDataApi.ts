@@ -396,7 +396,7 @@ export async function createInvoice(input: {
         vendorId: input.vendorId,
         invoiceNumber: input.invoiceNumber.trim(),
         amount: input.amount,
-        currency: input.currency ?? 'USD',
+        currency: input.currency ?? 'INR',
         issuedDate: input.issuedDate,
         dueDate: input.dueDate,
         status: input.status ?? 'sent',
@@ -510,7 +510,7 @@ export async function createAccount(input: {
     body: JSON.stringify({
       kind: input.kind,
       name: input.name.trim(),
-      currency: input.currency?.trim() || 'USD',
+      currency: input.currency?.trim() || 'INR',
       accountLocation: input.accountLocation?.trim(),
       projectId: input.projectId,
     }),

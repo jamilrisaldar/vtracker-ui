@@ -17,7 +17,7 @@ export function AccountAddPanel({
 }) {
   const [kind, setKind] = useState<'bank' | 'cash'>('bank')
   const [name, setName] = useState('')
-  const [currency, setCurrency] = useState('USD')
+  const [currency, setCurrency] = useState('INR')
   const [accountLocation, setAccountLocation] = useState('')
   const [projectId, setProjectId] = useState('')
   const [saving, setSaving] = useState(false)
@@ -43,7 +43,7 @@ export function AccountAddPanel({
             await api.createAccount({
               kind,
               name: name.trim(),
-              currency: currency.trim() || 'USD',
+              currency: currency.trim() || 'INR',
               accountLocation: accountLocation.trim() || undefined,
               projectId: projectId || undefined,
             })

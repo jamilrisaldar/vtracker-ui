@@ -18,6 +18,7 @@ import type {
   Vendor,
 } from '../types'
 import { isBackendAuthEnabled } from '../config'
+import { plotCalculatedSqFtFromDimensions } from '../utils/landPlotDisplay'
 import {
   clearAuthSession,
   id,
@@ -383,10 +384,18 @@ export async function createPlot(input: {
     widthFeet2: irr ? input.widthFeet2 : undefined,
     lengthFeet2: irr ? input.lengthFeet2 : undefined,
     isIrregular: irr,
+    calculatedSquareFeet:
+      plotCalculatedSqFtFromDimensions({
+        isIrregular: irr,
+        widthFeet: input.widthFeet,
+        lengthFeet: input.lengthFeet,
+        widthFeet2: irr ? input.widthFeet2 : undefined,
+        lengthFeet2: irr ? input.lengthFeet2 : undefined,
+      }) ?? undefined,
     totalSquareFeetOverride: input.totalSquareFeetOverride,
     pricePerSqft: input.pricePerSqft,
     totalPurchasePrice: input.totalPurchasePrice,
-    currency: input.currency?.trim() || 'USD',
+    currency: input.currency?.trim() || 'INR',
     isReserved: input.isReserved ?? false,
     status: input.status ?? 'open',
     plotDetails: input.plotDetails?.trim() || undefined,
@@ -448,7 +457,7 @@ export async function updatePlot(
   }
   if (patch.pricePerSqft !== undefined) plot.pricePerSqft = patch.pricePerSqft
   if (patch.totalPurchasePrice !== undefined) plot.totalPurchasePrice = patch.totalPurchasePrice ?? undefined
-  if (patch.currency != null) plot.currency = patch.currency.trim() || 'USD'
+  if (patch.currency != null) plot.currency = patch.currency.trim() || 'INR'
   if (patch.isReserved !== undefined) plot.isReserved = patch.isReserved
   if (patch.status != null) plot.status = patch.status
   if (patch.plotDetails !== undefined) {
@@ -467,6 +476,8 @@ export async function updatePlot(
     plot.notes = patch.notes?.trim() || undefined
   }
   if (patch.isPublicUse !== undefined) plot.isPublicUse = patch.isPublicUse
+  plot.calculatedSquareFeet =
+    plotCalculatedSqFtFromDimensions(plot) ?? undefined
   plot.updatedAt = nowIso()
   proj.updatedAt = nowIso()
   saveDb(db)
@@ -613,7 +624,7 @@ export async function createInvoice(input: {
     projectId: input.projectId,
     invoiceNumber: input.invoiceNumber.trim(),
     amount: input.amount,
-    currency: input.currency ?? 'USD',
+    currency: input.currency ?? 'INR',
     issuedDate: input.issuedDate,
     dueDate: input.dueDate,
     status: input.status ?? 'sent',
@@ -793,7 +804,7 @@ export async function createAccount(input: {
     kind: input.kind,
     name: input.name.trim(),
     accountLocation: input.accountLocation?.trim() || undefined,
-    currency: input.currency?.trim() || 'USD',
+    currency: input.currency?.trim() || 'INR',
     createdAt: nowIso(),
   }
   db.accounts.push(acc)

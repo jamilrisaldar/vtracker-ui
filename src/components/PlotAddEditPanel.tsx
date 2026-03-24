@@ -1,46 +1,51 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as api from '../api/dataApi'
 import type { LandPlot, PlotStatus } from '../types'
+import { plotCalculatedSqFtFromDimensions } from '../utils/landPlotDisplay'
 import { plotStatusOptions } from './project-detail/constants'
 
 type PlotPanelMode = 'add' | 'edit'
 
-function computedSqFtFromDims(
+function formatPostedTotalInput(n: number): string {
+  const rounded = Math.round(n * 100) / 100
+  if (Number.isInteger(rounded)) return String(rounded)
+  return String(rounded)
+}
+
+function computedSqFtFromFormStrings(
   isIrregular: boolean,
   w1: string,
   l1: string,
   w2: string,
   l2: string,
 ): number | null {
-  if (isIrregular) {
-    const a = Number(w1)
-    const b = Number(l1)
-    const c = Number(w2)
-    const d = Number(l2)
-    if (
-      !w1.trim() ||
-      !l1.trim() ||
-      !w2.trim() ||
-      !l2.trim() ||
-      Number.isNaN(a) ||
-      Number.isNaN(b) ||
-      Number.isNaN(c) ||
-      Number.isNaN(d) ||
-      a <= 0 ||
-      b <= 0 ||
-      c <= 0 ||
-      d <= 0
-    ) {
-      return null
-    }
-    return a * b + c * d
+  const n = (s: string): number | null => {
+    const x = Number(s)
+    if (!s.trim() || Number.isNaN(x) || x <= 0) return null
+    return x
   }
-  const w = Number(w1)
-  const l = Number(l1)
-  if (!w1.trim() || !l1.trim() || Number.isNaN(w) || Number.isNaN(l) || w <= 0 || l <= 0) {
-    return null
+  if (!isIrregular) {
+    const wf = n(w1)
+    const lf = n(l1)
+    if (wf == null || lf == null) return null
+    return plotCalculatedSqFtFromDimensions({
+      isIrregular: false,
+      widthFeet: wf,
+      lengthFeet: lf,
+    })
   }
-  return w * l
+  const wf = n(w1)
+  const lf = n(l1)
+  const wf2 = n(w2)
+  const lf2 = n(l2)
+  if (wf == null || lf == null || wf2 == null || lf2 == null) return null
+  return plotCalculatedSqFtFromDimensions({
+    isIrregular: true,
+    widthFeet: wf,
+    lengthFeet: lf,
+    widthFeet2: wf2,
+    lengthFeet2: lf2,
+  })
 }
 
 export function PlotAddEditPanel({
@@ -97,7 +102,7 @@ export function PlotAddEditPanel({
       totalSqFtOverride: '',
       pricePerSqft: '',
       totalPurchasePrice: '',
-      currency: 'USD',
+      currency: 'INR',
       isReserved: false,
       status: 'open' as PlotStatus,
       plotDetails: '',
@@ -118,6 +123,10 @@ export function PlotAddEditPanel({
   const [totalSqFtOverride, setTotalSqFtOverride] = useState(initial.totalSqFtOverride)
   const [pricePerSqft, setPricePerSqft] = useState(initial.pricePerSqft)
   const [totalPurchasePrice, setTotalPurchasePrice] = useState(initial.totalPurchasePrice)
+  /** When false, posted total follows effective area × posted $/sq ft. */
+  const [postedTotalManual, setPostedTotalManual] = useState(
+    () => mode === 'edit' && initial.totalPurchasePrice.trim() !== '',
+  )
   const [currency, setCurrency] = useState(initial.currency)
   const [isReserved, setIsReserved] = useState(initial.isReserved)
   const [status, setStatus] = useState<PlotStatus>(initial.status)
@@ -141,6 +150,7 @@ export function PlotAddEditPanel({
     setTotalSqFtOverride(initial.totalSqFtOverride)
     setPricePerSqft(initial.pricePerSqft)
     setTotalPurchasePrice(initial.totalPurchasePrice)
+    setPostedTotalManual(mode === 'edit' && initial.totalPurchasePrice.trim() !== '')
     setCurrency(initial.currency)
     setIsReserved(initial.isReserved)
     setStatus(initial.status)
@@ -153,18 +163,46 @@ export function PlotAddEditPanel({
   }, [initial])
 
   const computedFromDims = useMemo(
-    () => computedSqFtFromDims(isIrregular, widthFeet, lengthFeet, widthFeet2, lengthFeet2),
+    () =>
+      computedSqFtFromFormStrings(
+        isIrregular,
+        widthFeet,
+        lengthFeet,
+        widthFeet2,
+        lengthFeet2,
+      ),
     [isIrregular, widthFeet, lengthFeet, widthFeet2, lengthFeet2],
   )
 
-  const previewEffectiveSqFt = useMemo(() => {
+  /** Positive override only; 0 / empty = use calculated area (matches API / table behavior). */
+  const positiveSqFtOverride = useMemo(() => {
     const o = totalSqFtOverride.trim()
-    if (o !== '') {
-      const n = Number(o)
-      if (!Number.isNaN(n) && n >= 0) return n
+    if (o === '') return null
+    const n = Number(o)
+    if (Number.isNaN(n) || n <= 0) return null
+    return n
+  }, [totalSqFtOverride])
+
+  const previewEffectiveSqFt = useMemo(() => {
+    return positiveSqFtOverride ?? computedFromDims
+  }, [positiveSqFtOverride, computedFromDims])
+
+  const autoPostedTotalPurchase = useMemo(() => {
+    const ppsf = Number(pricePerSqft)
+    if (!pricePerSqft.trim() || Number.isNaN(ppsf) || ppsf < 0) return null
+    const area = previewEffectiveSqFt
+    if (area == null || area <= 0) return null
+    return area * ppsf
+  }, [pricePerSqft, previewEffectiveSqFt])
+
+  useEffect(() => {
+    if (postedTotalManual) return
+    if (autoPostedTotalPurchase == null) {
+      setTotalPurchasePrice('')
+      return
     }
-    return computedFromDims
-  }, [totalSqFtOverride, computedFromDims])
+    setTotalPurchasePrice(formatPostedTotalInput(autoPostedTotalPurchase))
+  }, [autoPostedTotalPurchase, postedTotalManual])
 
   const title = mode === 'add' ? 'Add plot' : 'Edit plot'
 
@@ -222,7 +260,7 @@ export function PlotAddEditPanel({
                 onError('Total square feet override must be a valid non-negative number.')
                 return
               }
-              totalSquareFeetOverride = n
+              totalSquareFeetOverride = n === 0 ? undefined : n
             }
           } else {
             if (!rawOverride) totalSquareFeetOverride = null
@@ -232,7 +270,7 @@ export function PlotAddEditPanel({
                 onError('Total square feet override must be a valid non-negative number.')
                 return
               }
-              totalSquareFeetOverride = n
+              totalSquareFeetOverride = n === 0 ? null : n
             }
           }
 
@@ -339,16 +377,16 @@ export function PlotAddEditPanel({
                 lengthFeet: l1,
                 widthFeet2: isIrregular ? w2 : undefined,
                 lengthFeet2: isIrregular ? l2 : undefined,
-                totalSquareFeetOverride,
+                totalSquareFeetOverride: totalSquareFeetOverride ?? undefined,
                 pricePerSqft: ppsf,
-                totalPurchasePrice: tpp,
-                currency: currency.trim() || 'USD',
+                totalPurchasePrice: tpp ?? undefined,
+                currency: currency.trim() || 'INR',
                 isReserved,
                 status,
                 plotDetails: plotDetails.trim() || undefined,
                 purchaseParty: purchaseParty.trim() || undefined,
-                finalPricePerSqft: fPpsf,
-                finalTotalPurchasePrice: fTotal,
+                finalPricePerSqft: fPpsf ?? undefined,
+                finalTotalPurchasePrice: fTotal ?? undefined,
                 notes: notes.trim() || undefined,
                 isPublicUse,
               })
@@ -372,7 +410,7 @@ export function PlotAddEditPanel({
                 totalSquareFeetOverride,
                 pricePerSqft: ppsf,
                 totalPurchasePrice: tpp,
-                currency: currency.trim() || 'USD',
+                currency: currency.trim() || 'INR',
                 isReserved,
                 status,
                 plotDetails: plotDetails.trim() === '' ? null : plotDetails.trim(),
@@ -497,10 +535,10 @@ export function PlotAddEditPanel({
               ? `${computedFromDims.toLocaleString(undefined, { maximumFractionDigits: 2 })} sq ft`
               : '—'}
           </p>
-          {previewEffectiveSqFt != null && totalSqFtOverride.trim() !== '' && (
+          {positiveSqFtOverride != null && (
             <p className="mt-1 text-sm font-medium text-teal-800">
               Effective (with override):{' '}
-              {previewEffectiveSqFt.toLocaleString(undefined, { maximumFractionDigits: 2 })} sq ft
+              {positiveSqFtOverride.toLocaleString(undefined, { maximumFractionDigits: 2 })} sq ft
             </p>
           )}
         </div>
@@ -548,8 +586,19 @@ export function PlotAddEditPanel({
             step="0.01"
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             value={totalPurchasePrice}
-            onChange={(e) => setTotalPurchasePrice(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value
+              setTotalPurchasePrice(v)
+              setPostedTotalManual(v.trim() !== '')
+            }}
           />
+          <p className="mt-1 text-xs text-slate-500">
+            {postedTotalManual
+              ? 'Manual value. Clear the field to use area × posted price / sq ft again.'
+              : autoPostedTotalPurchase != null
+                ? `Filled as effective area × posted price / sq ft (${previewEffectiveSqFt?.toLocaleString(undefined, { maximumFractionDigits: 2 })} × ${pricePerSqft.trim() || '—'}). Edit to override.`
+                : 'Enter dimensions and posted price / sq ft to auto-fill, or type a total.'}
+          </p>
         </label>
         <label className="block sm:col-span-2">
           <span className="text-xs font-medium text-slate-600">

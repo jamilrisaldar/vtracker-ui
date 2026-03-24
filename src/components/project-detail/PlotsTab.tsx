@@ -75,7 +75,7 @@ export function PlotsTab({
               <th className="px-4 py-3">Plot #</th>
               <th className="px-4 py-3">W × L (ft)</th>
               <th className="px-4 py-3">Sq ft</th>
-              <th className="max-w-[140px] px-4 py-3">Details</th>
+              <th className="min-w-[12rem] max-w-[20rem] px-4 py-3">Details</th>
               <th className="px-4 py-3">Posted $/ft</th>
               <th className="px-4 py-3">Posted total</th>
               <th className="px-4 py-3">Final $/ft</th>
@@ -104,21 +104,18 @@ export function PlotsTab({
                   <td className="px-4 py-3 font-medium text-slate-900">
                     {p.plotNumber ?? '—'}
                   </td>
-                  <td className="px-4 py-3 font-mono text-slate-800">
+                  <td className="whitespace-pre-line px-4 py-3 font-mono text-xs leading-snug text-slate-800 align-top">
                     {plotDimensionsLabel(p)}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {sqFt != null
+                  <td className="px-4 py-3 text-slate-600 align-top tabular-nums">
+                    {sqFt != null && sqFt > 0
                       ? sqFt.toLocaleString(undefined, {
                           maximumFractionDigits: 2,
                         })
                       : '—'}
                   </td>
-                  <td
-                    className="max-w-[140px] truncate px-4 py-3 text-slate-600"
-                    title={p.plotDetails}
-                  >
-                    {trunc(p.plotDetails, 48)}
+                  <td className="min-w-[12rem] max-w-[20rem] whitespace-normal break-words px-4 py-3 text-slate-600 align-top">
+                    {p.plotDetails?.trim() ? p.plotDetails : '—'}
                   </td>
                   <td className="px-4 py-3">{formatMoney(p.pricePerSqft, p.currency)}</td>
                   <td className="px-4 py-3 font-medium">

@@ -10,6 +10,7 @@ import type {
   User,
   Vendor,
 } from '../types'
+import { plotCalculatedSqFtFromDimensions } from '../utils/landPlotDisplay'
 
 const DB_KEY = 'vtracker-mock-db-v1'
 const AUTH_KEY = 'vtracker-auth-session-v1'
@@ -76,11 +77,16 @@ export function loadDb(): MockDatabase {
       phases: (parsed.phases ?? []).map(migratePhase),
       plots: (parsed.plots ?? []).map((p) => {
         const lp = p as LandPlot
-        return {
+        const merged: LandPlot = {
           ...lp,
           isPublicUse: lp.isPublicUse ?? false,
           isIrregular: lp.isIrregular ?? false,
         }
+        if (merged.calculatedSquareFeet == null) {
+          const c = plotCalculatedSqFtFromDimensions(merged)
+          if (c != null) merged.calculatedSquareFeet = c
+        }
+        return merged
       }),
     }
   } catch {
