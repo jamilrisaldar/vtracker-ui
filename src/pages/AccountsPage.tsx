@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type {
-  Account,
-  AccountTransaction,
-  Invoice,
-  Payment,
-  Project,
-} from '../types'
+import type { Account, AccountTransaction, Invoice, Project } from '../types'
 import * as api from '../api/dataApi'
 import { AccountAddPanel } from '../components/AccountAddPanel'
+import { TransactionFormPanel, type TransactionPaymentOption } from '../components/TransactionFormPanel'
 import { formatDate, formatMoney } from '../utils/format'
 
 function ledgerBalance(transactions: AccountTransaction[]): number {
@@ -17,30 +12,23 @@ function ledgerBalance(transactions: AccountTransaction[]): number {
   }, 0)
 }
 
-type PaymentOption = { payment: Payment; projectId: string; projectName: string }
-
 export function AccountsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [balances, setBalances] = useState<Record<string, number>>({})
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [transactions, setTransactions] = useState<AccountTransaction[]>([])
-  const [paymentOptions, setPaymentOptions] = useState<PaymentOption[]>([])
+  const [paymentOptions, setPaymentOptions] = useState<TransactionPaymentOption[]>([])
   const [vendorName, setVendorName] = useState<Map<string, string>>(new Map())
   const [invoiceById, setInvoiceById] = useState<Map<string, Invoice>>(new Map())
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [showAddAccountPanel, setShowAddAccountPanel] = useState(false)
-
-  const [txAmount, setTxAmount] = useState('')
-  const [txEntry, setTxEntry] = useState<'debit' | 'credit'>('debit')
-  const [txDate, setTxDate] = useState(() => new Date().toISOString().slice(0, 10))
-  const [txDesc, setTxDesc] = useState('')
-  const [txPaymentId, setTxPaymentId] = useState('')
-  const [txProjectId, setTxProjectId] = useState('')
+  const [showTransactionPanel, setShowTransactionPanel] = useState(false)
+  const [editingTransaction, setEditingTransaction] = useState<AccountTransaction | null>(null)
 
   const loadPaymentContext = useCallback(async (plist: Project[]) => {
-    const opts: PaymentOption[] = []
+    const opts: TransactionPaymentOption[] = []
     const vmap = new Map<string, string>()
     const imap = new Map<string, Invoice>()
     for (const p of plist) {
@@ -231,129 +219,21 @@ export function AccountsPage() {
 
           {selectedAccount && (
             <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-medium text-slate-900">
-                Transactions — {selectedAccount.name}
-              </h2>
-
-              <form
-                className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-                onSubmit={async (e) => {
-                  e.preventDefault()
-                  if (!txAmount || !selectedAccountId) return
-                  setErr(null)
-                  try {
-                    await api.createAccountTransaction({
-                      accountId: selectedAccountId,
-                      amount: Number(txAmount),
-                      entryType: txEntry,
-                      occurredOn: txDate,
-                      description: txDesc || undefined,
-                      paymentId: txPaymentId || undefined,
-                      projectId: txPaymentId ? undefined : txProjectId || undefined,
-                    })
-                    setTxAmount('')
-                    setTxDesc('')
-                    setTxPaymentId('')
-                    setTxProjectId('')
-                    await loadAccountsAndMeta()
-                    await loadTransactions(selectedAccountId)
-                  } catch (er) {
-                    setErr(er instanceof Error ? er.message : 'Could not save transaction.')
-                  }
-                }}
-              >
-                <label className="block">
-                  <span className="text-xs font-medium text-slate-600">Amount</span>
-                  <input
-                    required
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    value={txAmount}
-                    onChange={(e) => setTxAmount(e.target.value)}
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-medium text-slate-600">Entry</span>
-                  <select
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    value={txEntry}
-                    onChange={(e) => setTxEntry(e.target.value as 'debit' | 'credit')}
-                  >
-                    <option value="debit">Debit</option>
-                    <option value="credit">Credit</option>
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="text-xs font-medium text-slate-600">Date</span>
-                  <input
-                    required
-                    type="date"
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    value={txDate}
-                    onChange={(e) => setTxDate(e.target.value)}
-                  />
-                </label>
-                <label className="block sm:col-span-2">
-                  <span className="text-xs font-medium text-slate-600">
-                    Project tag (optional, ignored if a payment is linked)
-                  </span>
-                  <select
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    value={txProjectId}
-                    onChange={(e) => setTxProjectId(e.target.value)}
-                    disabled={Boolean(txPaymentId)}
-                  >
-                    <option value="">— None —</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block sm:col-span-2">
-                  <span className="text-xs font-medium text-slate-600">
-                    Link to vendor payment (optional)
-                  </span>
-                  <select
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    value={txPaymentId}
-                    onChange={(e) => {
-                      setTxPaymentId(e.target.value)
-                      if (e.target.value) setTxProjectId('')
-                    }}
-                  >
-                    <option value="">— None —</option>
-                    {paymentOptions.map(({ payment: p, projectName: pname }) => {
-                      const inv = invoiceById.get(p.invoiceId)
-                      return (
-                        <option key={p.id} value={p.id}>
-                          [{pname}] {formatDate(p.paidDate)} — {vendorName.get(p.vendorId) ?? 'Vendor'}{' '}
-                          — {formatMoney(p.amount, inv?.currency)} (inv {inv?.invoiceNumber ?? '?'})
-                        </option>
-                      )
-                    })}
-                  </select>
-                </label>
-                <label className="block sm:col-span-2 lg:col-span-3">
-                  <span className="text-xs font-medium text-slate-600">Description (optional)</span>
-                  <input
-                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    value={txDesc}
-                    onChange={(e) => setTxDesc(e.target.value)}
-                  />
-                </label>
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
-                  >
-                    Add transaction
-                  </button>
-                </div>
-              </form>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-medium text-slate-900">
+                  Transactions — {selectedAccount.name}
+                </h2>
+                <button
+                  type="button"
+                  className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+                  onClick={() => {
+                    setEditingTransaction(null)
+                    setShowTransactionPanel(true)
+                  }}
+                >
+                  Add transaction
+                </button>
+              </div>
 
               <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200">
                 <table className="min-w-full text-left text-sm">
@@ -397,24 +277,36 @@ export function AccountsPage() {
                             )}
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <button
-                              type="button"
-                              className="text-xs text-red-600 hover:underline"
-                              onClick={() => {
-                                if (!confirm('Remove this transaction?')) return
-                                void (async () => {
-                                  try {
-                                    await api.deleteAccountTransaction(t.id, selectedAccount.id)
-                                    await loadAccountsAndMeta()
-                                    await loadTransactions(selectedAccount.id)
-                                  } catch (er) {
-                                    setErr(er instanceof Error ? er.message : 'Delete failed.')
-                                  }
-                                })()
-                              }}
-                            >
-                              Remove
-                            </button>
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <button
+                                type="button"
+                                className="text-xs text-teal-700 hover:underline"
+                                onClick={() => {
+                                  setEditingTransaction(t)
+                                  setShowTransactionPanel(true)
+                                }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="text-xs text-red-600 hover:underline"
+                                onClick={() => {
+                                  if (!confirm('Remove this transaction?')) return
+                                  void (async () => {
+                                    try {
+                                      await api.deleteAccountTransaction(t.id, selectedAccount.id)
+                                      await loadAccountsAndMeta()
+                                      await loadTransactions(selectedAccount.id)
+                                    } catch (er) {
+                                      setErr(er instanceof Error ? er.message : 'Delete failed.')
+                                    }
+                                  })()
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -434,6 +326,32 @@ export function AccountsPage() {
               projects={projects}
               onClose={() => setShowAddAccountPanel(false)}
               onRefresh={loadAccountsAndMeta}
+              onError={setErr}
+              className="h-full overflow-y-auto rounded-none border-y-0 border-r-0 p-6 shadow-xl"
+            />
+          </div>
+        </div>
+      )}
+
+      {showTransactionPanel && selectedAccount && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40" aria-hidden="true">
+          <div className="absolute inset-y-0 right-0 w-full max-w-xl">
+            <TransactionFormPanel
+              key={editingTransaction?.id ?? 'new'}
+              account={selectedAccount}
+              projects={projects}
+              paymentOptions={paymentOptions}
+              vendorName={vendorName}
+              invoiceById={invoiceById}
+              editingTransaction={editingTransaction}
+              onClose={() => {
+                setShowTransactionPanel(false)
+                setEditingTransaction(null)
+              }}
+              onSaved={async () => {
+                await loadAccountsAndMeta()
+                if (selectedAccountId) await loadTransactions(selectedAccountId)
+              }}
               onError={setErr}
               className="h-full overflow-y-auto rounded-none border-y-0 border-r-0 p-6 shadow-xl"
             />

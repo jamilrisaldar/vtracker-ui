@@ -2,6 +2,8 @@ export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed'
 
 export type PhaseStatus = 'not_started' | 'in_progress' | 'done'
 
+export type PlotStatus = 'open' | 'negotiating' | 'conditional_sale' | 'sold'
+
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'partial' | 'overdue'
 
 export type DocumentKind = 'invoice' | 'payment_proof' | 'progress_photo' | 'other'
@@ -39,6 +41,33 @@ export interface Phase {
   status: PhaseStatus
   /** Sort order within the project (matches API `displayOrder`). */
   displayOrder: number
+}
+
+export interface LandPlot {
+  id: string
+  projectId: string
+  /** Optional label from survey or layout (e.g. "A-12"). */
+  plotNumber?: string
+  widthFeet: number
+  lengthFeet: number
+  pricePerSqft: number
+  totalPurchasePrice: number
+  currency: string
+  isReserved: boolean
+  status: PlotStatus
+  /** Free-form description of the plot. */
+  plotDetails?: string
+  /** Buyer / party on the purchase (when known). */
+  purchaseParty?: string
+  /** Agreed or recorded final price per sq ft (after negotiation). */
+  finalPricePerSqft?: number
+  /** Agreed or recorded final total purchase amount. */
+  finalTotalPurchasePrice?: number
+  notes?: string
+  /** True if the plot is designated for public use (e.g. road, park strip). */
+  isPublicUse: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Vendor {

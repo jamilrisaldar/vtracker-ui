@@ -5,9 +5,11 @@ import type {
   DocumentKind,
   Invoice,
   InvoiceStatus,
+  LandPlot,
   Payment,
   Phase,
   PhaseStatus,
+  PlotStatus,
   Project,
   ProjectDocument,
   ProjectReport,
@@ -219,6 +221,7 @@ export async function deleteProject(projectId: string): Promise<void> {
   if (!p || p.userId !== userId) throw new Error('Not found')
   db.projects = db.projects.filter((x) => x.id !== projectId)
   db.phases = db.phases.filter((x) => x.projectId !== projectId)
+  db.plots = db.plots.filter((x) => x.projectId !== projectId)
   db.vendors = db.vendors.filter((x) => x.projectId !== projectId)
   const invIds = new Set(
     db.invoices.filter((i) => i.projectId === projectId).map((i) => i.id),
@@ -330,6 +333,136 @@ export async function deletePhase(phaseId: string, _projectId?: string): Promise
   const proj = db.projects.find((p) => p.id === ph.projectId)
   if (!proj || proj.userId !== userId) throw new Error('Not found')
   db.phases = db.phases.filter((x) => x.id !== phaseId)
+  proj.updatedAt = nowIso()
+  saveDb(db)
+}
+
+// —— Plots ——
+
+export async function listPlots(projectId: string): Promise<LandPlot[]> {
+  await delay()
+  if (!(await getProject(projectId))) throw new Error('Not found')
+  return loadDb()
+    .plots.filter((x) => x.projectId === projectId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
+export async function createPlot(input: {
+  projectId: string
+  plotNumber?: string
+  widthFeet: number
+  lengthFeet: number
+  pricePerSqft: number
+  totalPurchasePrice: number
+  currency?: string
+  isReserved?: boolean
+  status?: PlotStatus
+  plotDetails?: string
+  purchaseParty?: string
+  finalPricePerSqft?: number
+  finalTotalPurchasePrice?: number
+  notes?: string
+  isPublicUse?: boolean
+}): Promise<LandPlot> {
+  await delay()
+  const project = await getProject(input.projectId)
+  if (!project) throw new Error('Not found')
+  const db = loadDb()
+  const ts = nowIso()
+  const plot: LandPlot = {
+    id: id('plot'),
+    projectId: input.projectId,
+    plotNumber: input.plotNumber?.trim() || undefined,
+    widthFeet: input.widthFeet,
+    lengthFeet: input.lengthFeet,
+    pricePerSqft: input.pricePerSqft,
+    totalPurchasePrice: input.totalPurchasePrice,
+    currency: input.currency?.trim() || 'USD',
+    isReserved: input.isReserved ?? false,
+    status: input.status ?? 'open',
+    plotDetails: input.plotDetails?.trim() || undefined,
+    purchaseParty: input.purchaseParty?.trim() || undefined,
+    finalPricePerSqft: input.finalPricePerSqft,
+    finalTotalPurchasePrice: input.finalTotalPurchasePrice,
+    notes: input.notes?.trim() || undefined,
+    isPublicUse: input.isPublicUse ?? false,
+    createdAt: ts,
+    updatedAt: ts,
+  }
+  db.plots.push(plot)
+  project.updatedAt = nowIso()
+  saveDb(db)
+  return plot
+}
+
+export async function updatePlot(
+  plotId: string,
+  projectId: string,
+  patch: Partial<{
+    plotNumber: string | null
+    widthFeet: number
+    lengthFeet: number
+    pricePerSqft: number
+    totalPurchasePrice: number
+    currency: string
+    isReserved: boolean
+    status: PlotStatus
+    plotDetails: string | null
+    purchaseParty: string | null
+    finalPricePerSqft: number | null
+    finalTotalPurchasePrice: number | null
+    notes: string | null
+    isPublicUse: boolean
+  }>,
+): Promise<LandPlot> {
+  await delay()
+  const userId = getUserIdOrThrow()
+  const db = loadDb()
+  const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
+  if (!plot) throw new Error('Not found')
+  const proj = db.projects.find((p) => p.id === projectId)
+  if (!proj || proj.userId !== userId) throw new Error('Not found')
+  if (patch.plotNumber !== undefined) {
+    plot.plotNumber = patch.plotNumber?.trim() || undefined
+  }
+  if (patch.widthFeet != null) plot.widthFeet = patch.widthFeet
+  if (patch.lengthFeet != null) plot.lengthFeet = patch.lengthFeet
+  if (patch.pricePerSqft != null) plot.pricePerSqft = patch.pricePerSqft
+  if (patch.totalPurchasePrice != null) plot.totalPurchasePrice = patch.totalPurchasePrice
+  if (patch.currency != null) plot.currency = patch.currency.trim() || 'USD'
+  if (patch.isReserved !== undefined) plot.isReserved = patch.isReserved
+  if (patch.status != null) plot.status = patch.status
+  if (patch.plotDetails !== undefined) {
+    plot.plotDetails = patch.plotDetails?.trim() || undefined
+  }
+  if (patch.purchaseParty !== undefined) {
+    plot.purchaseParty = patch.purchaseParty?.trim() || undefined
+  }
+  if (patch.finalPricePerSqft !== undefined) {
+    plot.finalPricePerSqft = patch.finalPricePerSqft ?? undefined
+  }
+  if (patch.finalTotalPurchasePrice !== undefined) {
+    plot.finalTotalPurchasePrice = patch.finalTotalPurchasePrice ?? undefined
+  }
+  if (patch.notes !== undefined) {
+    plot.notes = patch.notes?.trim() || undefined
+  }
+  if (patch.isPublicUse !== undefined) plot.isPublicUse = patch.isPublicUse
+  plot.updatedAt = nowIso()
+  proj.updatedAt = nowIso()
+  saveDb(db)
+  return plot
+}
+
+export async function deletePlot(plotId: string, projectId: string): Promise<void> {
+  await delay()
+  const userId = getUserIdOrThrow()
+  const db = loadDb()
+  const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
+  if (!plot) throw new Error('Not found')
+  const proj = db.projects.find((p) => p.id === projectId)
+  if (!proj || proj.userId !== userId) throw new Error('Not found')
+  db.plots = db.plots.filter((x) => x.id !== plotId)
   proj.updatedAt = nowIso()
   saveDb(db)
 }
@@ -758,6 +891,71 @@ export async function createAccountTransaction(input: {
   }
   saveDb(db)
   return tx
+}
+
+export async function updateAccountTransaction(
+  transactionId: string,
+  accountId: string,
+  input: {
+    amount: number
+    entryType: 'debit' | 'credit'
+    description?: string
+    occurredOn: string
+    paymentId?: string
+    projectId?: string
+  },
+): Promise<AccountTransaction> {
+  await delay()
+  const userId = getUserIdOrThrow()
+  const db = loadDb()
+  const acc = db.accounts.find((a) => a.id === accountId)
+  if (!acc) throw new Error('Account not found')
+  const idx = db.accountTransactions.findIndex((x) => x.id === transactionId && x.accountId === accountId)
+  if (idx < 0) throw new Error('Not found')
+
+  let txnProjectId: string | undefined = input.projectId
+  if (input.paymentId) {
+    const pay = db.payments.find((p) => p.id === input.paymentId)
+    if (!pay) throw new Error('Payment not found')
+    const proj = db.projects.find((p) => p.id === pay.projectId && p.userId === userId)
+    if (!proj) throw new Error('Payment not found')
+    txnProjectId = pay.projectId
+    if (
+      db.accountTransactions.some(
+        (t) => t.paymentId === input.paymentId && t.id !== transactionId,
+      )
+    ) {
+      throw new Error('A transaction is already linked to this payment')
+    }
+  } else if (txnProjectId) {
+    const project = db.projects.find((p) => p.id === txnProjectId && p.userId === userId)
+    if (!project) throw new Error('Invalid project')
+  }
+
+  const prev = db.accountTransactions[idx]
+  const prevProjectId = prev.projectId
+
+  const next: AccountTransaction = {
+    ...prev,
+    projectId: txnProjectId,
+    amount: input.amount,
+    entryType: input.entryType,
+    description: input.description?.trim() || undefined,
+    occurredOn: input.occurredOn,
+    paymentId: input.paymentId,
+  }
+  db.accountTransactions[idx] = next
+
+  const touch = (pid: string | undefined) => {
+    if (!pid) return
+    const proj = db.projects.find((p) => p.id === pid)
+    if (proj) proj.updatedAt = nowIso()
+  }
+  if (prevProjectId && prevProjectId !== txnProjectId) touch(prevProjectId)
+  if (txnProjectId && txnProjectId !== prevProjectId) touch(txnProjectId)
+
+  saveDb(db)
+  return next
 }
 
 export async function deleteAccountTransaction(

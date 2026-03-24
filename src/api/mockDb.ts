@@ -2,6 +2,7 @@ import type {
   Account,
   AccountTransaction,
   Invoice,
+  LandPlot,
   Payment,
   Phase,
   Project,
@@ -17,6 +18,7 @@ export interface MockDatabase {
   users: User[]
   projects: Project[]
   phases: Phase[]
+  plots: LandPlot[]
   vendors: Vendor[]
   invoices: Invoice[]
   payments: Payment[]
@@ -32,6 +34,7 @@ function emptyDb(): MockDatabase {
     users: [],
     projects: [],
     phases: [],
+    plots: [],
     vendors: [],
     invoices: [],
     payments: [],
@@ -71,6 +74,10 @@ export function loadDb(): MockDatabase {
       accounts: migratedAccounts,
       accountTransactions: parsed.accountTransactions ?? [],
       phases: (parsed.phases ?? []).map(migratePhase),
+      plots: (parsed.plots ?? []).map((p) => {
+        const lp = p as LandPlot
+        return { ...lp, isPublicUse: lp.isPublicUse ?? false }
+      }),
     }
   } catch {
     return emptyDb()

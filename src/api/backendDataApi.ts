@@ -8,9 +8,11 @@ import type {
   DocumentKind,
   Invoice,
   InvoiceStatus,
+  LandPlot,
   Payment,
   Phase,
   PhaseStatus,
+  PlotStatus,
   Project,
   ProjectDocument,
   ProjectReport,
@@ -184,6 +186,105 @@ export async function updatePhase(
 export async function deletePhase(phaseId: string, projectId: string): Promise<void> {
   await apiRequest<void>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/phases/${encodeURIComponent(phaseId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+// —— Plots ——
+
+export async function listPlots(projectId: string): Promise<LandPlot[]> {
+  return apiRequest<LandPlot[]>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plots`,
+  )
+}
+
+export async function createPlot(input: {
+  projectId: string
+  plotNumber?: string
+  widthFeet: number
+  lengthFeet: number
+  pricePerSqft: number
+  totalPurchasePrice: number
+  currency?: string
+  isReserved?: boolean
+  status?: PlotStatus
+  plotDetails?: string
+  purchaseParty?: string
+  finalPricePerSqft?: number
+  finalTotalPurchasePrice?: number
+  notes?: string
+  isPublicUse?: boolean
+}): Promise<LandPlot> {
+  return apiRequest<LandPlot>(
+    `/api/v1/projects/${encodeURIComponent(input.projectId)}/plots`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        plotNumber: input.plotNumber?.trim(),
+        widthFeet: input.widthFeet,
+        lengthFeet: input.lengthFeet,
+        pricePerSqft: input.pricePerSqft,
+        totalPurchasePrice: input.totalPurchasePrice,
+        currency: input.currency?.trim(),
+        isReserved: input.isReserved,
+        status: input.status,
+        plotDetails: input.plotDetails?.trim(),
+        purchaseParty: input.purchaseParty?.trim(),
+        finalPricePerSqft: input.finalPricePerSqft,
+        finalTotalPurchasePrice: input.finalTotalPurchasePrice,
+        notes: input.notes?.trim(),
+        isPublicUse: input.isPublicUse,
+      }),
+    },
+  )
+}
+
+export async function updatePlot(
+  plotId: string,
+  projectId: string,
+  patch: Partial<{
+    plotNumber: string | null
+    widthFeet: number
+    lengthFeet: number
+    pricePerSqft: number
+    totalPurchasePrice: number
+    currency: string
+    isReserved: boolean
+    status: PlotStatus
+    plotDetails: string | null
+    purchaseParty: string | null
+    finalPricePerSqft: number | null
+    finalTotalPurchasePrice: number | null
+    notes: string | null
+    isPublicUse: boolean
+  }>,
+): Promise<LandPlot> {
+  const body: Record<string, unknown> = {}
+  if (patch.plotNumber !== undefined) body.plotNumber = patch.plotNumber?.trim() ?? null
+  if (patch.widthFeet != null) body.widthFeet = patch.widthFeet
+  if (patch.lengthFeet != null) body.lengthFeet = patch.lengthFeet
+  if (patch.pricePerSqft != null) body.pricePerSqft = patch.pricePerSqft
+  if (patch.totalPurchasePrice != null) body.totalPurchasePrice = patch.totalPurchasePrice
+  if (patch.currency != null) body.currency = patch.currency.trim()
+  if (patch.isReserved !== undefined) body.isReserved = patch.isReserved
+  if (patch.status != null) body.status = patch.status
+  if (patch.plotDetails !== undefined) body.plotDetails = patch.plotDetails?.trim() ?? null
+  if (patch.purchaseParty !== undefined) body.purchaseParty = patch.purchaseParty?.trim() ?? null
+  if (patch.finalPricePerSqft !== undefined) body.finalPricePerSqft = patch.finalPricePerSqft
+  if (patch.finalTotalPurchasePrice !== undefined) {
+    body.finalTotalPurchasePrice = patch.finalTotalPurchasePrice
+  }
+  if (patch.notes !== undefined) body.notes = patch.notes?.trim() ?? null
+  if (patch.isPublicUse !== undefined) body.isPublicUse = patch.isPublicUse
+  return apiRequest<LandPlot>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plots/${encodeURIComponent(plotId)}`,
+    { method: 'PATCH', body: JSON.stringify(body) },
+  )
+}
+
+export async function deletePlot(plotId: string, projectId: string): Promise<void> {
+  await apiRequest<void>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plots/${encodeURIComponent(plotId)}`,
     { method: 'DELETE' },
   )
 }
@@ -444,6 +545,34 @@ export async function createAccountTransaction(input: {
         occurredOn: input.occurredOn,
         paymentId: input.paymentId,
         projectId: input.projectId,
+      }),
+    },
+  )
+}
+
+export async function updateAccountTransaction(
+  transactionId: string,
+  accountId: string,
+  patch: {
+    amount: number
+    entryType: 'debit' | 'credit'
+    description?: string
+    occurredOn: string
+    paymentId?: string
+    projectId?: string
+  },
+): Promise<AccountTransaction> {
+  return apiRequest<AccountTransaction>(
+    `/api/v1/accounts/${encodeURIComponent(accountId)}/transactions/${encodeURIComponent(transactionId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        amount: patch.amount,
+        entryType: patch.entryType,
+        description: patch.description?.trim(),
+        occurredOn: patch.occurredOn,
+        paymentId: patch.paymentId,
+        projectId: patch.projectId,
       }),
     },
   )

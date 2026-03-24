@@ -7,9 +7,11 @@ import type {
   DocumentKind,
   Invoice,
   InvoiceStatus,
+  LandPlot,
   Payment,
   Phase,
   PhaseStatus,
+  PlotStatus,
   Project,
   ProjectDocument,
   ProjectReport,
@@ -103,6 +105,61 @@ export async function deletePhase(
     return backend.deletePhase(phaseId, projectId)
   }
   return mock.deletePhase(phaseId, projectId)
+}
+
+export async function listPlots(projectId: string): Promise<LandPlot[]> {
+  if (isBackendAuthEnabled()) return backend.listPlots(projectId)
+  return mock.listPlots(projectId)
+}
+
+export async function createPlot(input: {
+  projectId: string
+  plotNumber?: string
+  widthFeet: number
+  lengthFeet: number
+  pricePerSqft: number
+  totalPurchasePrice: number
+  currency?: string
+  isReserved?: boolean
+  status?: PlotStatus
+  plotDetails?: string
+  purchaseParty?: string
+  finalPricePerSqft?: number
+  finalTotalPurchasePrice?: number
+  notes?: string
+  isPublicUse?: boolean
+}): Promise<LandPlot> {
+  if (isBackendAuthEnabled()) return backend.createPlot(input)
+  return mock.createPlot(input)
+}
+
+export async function updatePlot(
+  plotId: string,
+  projectId: string,
+  patch: Partial<{
+    plotNumber: string | null
+    widthFeet: number
+    lengthFeet: number
+    pricePerSqft: number
+    totalPurchasePrice: number
+    currency: string
+    isReserved: boolean
+    status: PlotStatus
+    plotDetails: string | null
+    purchaseParty: string | null
+    finalPricePerSqft: number | null
+    finalTotalPurchasePrice: number | null
+    notes: string | null
+    isPublicUse: boolean
+  }>,
+): Promise<LandPlot> {
+  if (isBackendAuthEnabled()) return backend.updatePlot(plotId, projectId, patch)
+  return mock.updatePlot(plotId, projectId, patch)
+}
+
+export async function deletePlot(plotId: string, projectId: string): Promise<void> {
+  if (isBackendAuthEnabled()) return backend.deletePlot(plotId, projectId)
+  return mock.deletePlot(plotId, projectId)
 }
 
 export async function listVendors(projectId: string): Promise<Vendor[]> {
@@ -286,6 +343,22 @@ export async function createAccountTransaction(input: {
 }): Promise<AccountTransaction> {
   if (isBackendAuthEnabled()) return backend.createAccountTransaction(input)
   return mock.createAccountTransaction(input)
+}
+
+export async function updateAccountTransaction(
+  transactionId: string,
+  accountId: string,
+  patch: {
+    amount: number
+    entryType: 'debit' | 'credit'
+    description?: string
+    occurredOn: string
+    paymentId?: string
+    projectId?: string
+  },
+): Promise<AccountTransaction> {
+  if (isBackendAuthEnabled()) return backend.updateAccountTransaction(transactionId, accountId, patch)
+  return mock.updateAccountTransaction(transactionId, accountId, patch)
 }
 
 export async function deleteAccountTransaction(
