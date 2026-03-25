@@ -345,6 +345,9 @@ export async function createAccountTransaction(input: {
   amount: number
   entryType: 'debit' | 'credit'
   description?: string
+  bankMemo?: string
+  transactionCategory?: string
+  plotIds?: string[]
   occurredOn: string
   paymentId?: string
   projectId?: string
@@ -360,6 +363,9 @@ export async function updateAccountTransaction(
     amount: number
     entryType: 'debit' | 'credit'
     description?: string
+    bankMemo?: string
+    transactionCategory?: string
+    plotIds?: string[]
     occurredOn: string
     paymentId?: string
     projectId?: string
@@ -367,6 +373,11 @@ export async function updateAccountTransaction(
 ): Promise<AccountTransaction> {
   if (isBackendAuthEnabled()) return backend.updateAccountTransaction(transactionId, accountId, patch)
   return mock.updateAccountTransaction(transactionId, accountId, patch)
+}
+
+export async function listAccountTransactionCategories(): Promise<string[]> {
+  if (isBackendAuthEnabled()) return backend.listAccountTransactionCategories()
+  return mock.listAccountTransactionCategories()
 }
 
 export async function deleteAccountTransaction(

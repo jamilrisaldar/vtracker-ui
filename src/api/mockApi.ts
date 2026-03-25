@@ -878,6 +878,9 @@ export async function createAccountTransaction(input: {
   amount: number
   entryType: 'debit' | 'credit'
   description?: string
+  bankMemo?: string
+  transactionCategory?: string
+  plotIds?: string[]
   occurredOn: string
   paymentId?: string
   projectId?: string
@@ -910,6 +913,9 @@ export async function createAccountTransaction(input: {
     amount: input.amount,
     entryType: input.entryType,
     description: input.description?.trim() || undefined,
+    bankMemo: input.bankMemo?.trim() || undefined,
+    transactionCategory: input.transactionCategory?.trim() || undefined,
+    plotIds: input.plotIds?.slice() ?? undefined,
     occurredOn: input.occurredOn,
     paymentId: input.paymentId,
     createdAt: nowIso(),
@@ -930,6 +936,9 @@ export async function updateAccountTransaction(
     amount: number
     entryType: 'debit' | 'credit'
     description?: string
+    bankMemo?: string
+    transactionCategory?: string
+    plotIds?: string[]
     occurredOn: string
     paymentId?: string
     projectId?: string
@@ -971,6 +980,9 @@ export async function updateAccountTransaction(
     amount: input.amount,
     entryType: input.entryType,
     description: input.description?.trim() || undefined,
+    bankMemo: input.bankMemo?.trim() || undefined,
+    transactionCategory: input.transactionCategory?.trim() || undefined,
+    plotIds: input.plotIds?.slice() ?? undefined,
     occurredOn: input.occurredOn,
     paymentId: input.paymentId,
   }
@@ -986,6 +998,18 @@ export async function updateAccountTransaction(
 
   saveDb(db)
   return next
+}
+
+export async function listAccountTransactionCategories(): Promise<string[]> {
+  await delay(50)
+  getUserIdOrThrow()
+  const db = loadDb()
+  const cats = new Set<string>()
+  db.accountTransactions.forEach((t) => {
+    const c = t.transactionCategory?.trim()
+    if (c) cats.add(c)
+  })
+  return Array.from(cats).sort((a, b) => a.localeCompare(b))
 }
 
 export async function deleteAccountTransaction(

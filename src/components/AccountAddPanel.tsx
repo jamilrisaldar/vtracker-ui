@@ -1,26 +1,45 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import * as api from '../api/dataApi'
-import type { Project } from '../types'
+import type { Account, Project } from '../types'
 
 export function AccountAddPanel({
   projects,
+  editingAccount,
   onClose,
   onRefresh,
   onError,
   className,
 }: {
   projects: Project[]
+  editingAccount?: Account | null
   onClose: () => void
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
   className?: string
 }) {
+  const isEdit = editingAccount != null
   const [kind, setKind] = useState<'bank' | 'cash'>('bank')
   const [name, setName] = useState('')
   const [currency, setCurrency] = useState('INR')
   const [accountLocation, setAccountLocation] = useState('')
   const [projectId, setProjectId] = useState('')
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (editingAccount) {
+      setKind(editingAccount.kind)
+      setName(editingAccount.name)
+      setCurrency(editingAccount.currency)
+      setAccountLocation(editingAccount.accountLocation ?? '')
+      setProjectId(editingAccount.projectId ?? '')
+    } else {
+      setKind('bank')
+      setName('')
+      setCurrency('INR')
+      setAccountLocation('')
+      setProjectId('')
+    }
+  }, [editingAccount])
 
   return (
     <div
@@ -31,7 +50,9 @@ export function AccountAddPanel({
         .filter(Boolean)
         .join(' ')}
     >
-      <h2 className="text-lg font-medium text-slate-900">Add account</h2>
+      <h2 className="text-lg font-medium text-slate-900">
+        {isEdit ? 'Edit account' : 'Add account'}
+      </h2>
       <form
         className="mt-4 grid gap-4 sm:grid-cols-2"
         onSubmit={async (e) => {
@@ -40,20 +61,33 @@ export function AccountAddPanel({
           onError(null)
           setSaving(true)
           try {
-            await api.createAccount({
-              kind,
-              name: name.trim(),
-              currency: currency.trim() || 'INR',
-              accountLocation: accountLocation.trim() || undefined,
-              projectId: projectId || undefined,
-            })
-            setName('')
-            setAccountLocation('')
-            setProjectId('')
+            if (isEdit && editingAccount) {
+              await api.updateAccount(editingAccount.id, {
+                kind,
+                name: name.trim(),
+                currency: currency.trim() || 'INR',
+                accountLocation: accountLocation.trim() || undefined,
+                projectId: projectId || undefined,
+              })
+            } else {
+              await api.createAccount({
+                kind,
+                name: name.trim(),
+                currency: currency.trim() || 'INR',
+                accountLocation: accountLocation.trim() || undefined,
+                projectId: projectId || undefined,
+              })
+            }
             await onRefresh()
             onClose()
           } catch (err) {
-            onError(err instanceof Error ? err.message : 'Could not create account.')
+            onError(
+              err instanceof Error
+                ? err.message
+                : isEdit
+                  ? 'Could not update account.'
+                  : 'Could not create account.',
+            )
           } finally {
             setSaving(false)
           }
@@ -122,7 +156,7 @@ export function AccountAddPanel({
             disabled={saving}
             className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
           >
-            {saving ? 'Saving…' : 'Add account'}
+            {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Add account'}
           </button>
           <button
             type="button"

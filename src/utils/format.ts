@@ -1,8 +1,10 @@
 export function formatDate(iso: string): string {
   try {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(
-      new Date(iso),
-    )
+    // Avoid off-by-one issues from `new Date("YYYY-MM-DD")` (treated as UTC midnight).
+    // For date-only strings, construct a local Date instead.
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+    const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(iso)
+    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(d)
   } catch {
     return iso
   }

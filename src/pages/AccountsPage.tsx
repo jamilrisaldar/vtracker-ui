@@ -12,6 +12,66 @@ function ledgerBalance(transactions: AccountTransaction[]): number {
   }, 0)
 }
 
+function canonicalAmountString(amount: number): string {
+  const r = Math.round(amount * 100) / 100
+  if (Number.isInteger(r)) return String(r)
+  const s = r.toFixed(2)
+  return s.replace(/0+$/, '').replace(/\.$/, '')
+}
+
+function TrashIcon(props: { className?: string }) {
+  return (
+    <svg
+      className={props.className ?? 'h-4 w-4'}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M9 3h6m-8 4h10m-9 0v14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7m-7 4v8m4-8v8"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function PencilIcon(props: { className?: string }) {
+  return (
+    <svg
+      className={props.className ?? 'h-4 w-4'}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 20h9"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function iconBtnClass(tone: 'neutral' | 'danger' = 'neutral') {
+  const base =
+    'inline-flex h-9 w-9 items-center justify-center rounded-lg transition focus:outline-none focus:ring-2 focus:ring-teal-500/40'
+  return tone === 'danger'
+    ? `${base} text-red-700 hover:bg-red-50`
+    : `${base} text-slate-700 hover:bg-slate-100`
+}
+
 export function AccountsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -24,8 +84,19 @@ export function AccountsPage() {
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [showAddAccountPanel, setShowAddAccountPanel] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null)
   const [showTransactionPanel, setShowTransactionPanel] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<AccountTransaction | null>(null)
+
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
+  const [deleteAccountTarget, setDeleteAccountTarget] = useState<Account | null>(null)
+  const [deleteAccountNameInput, setDeleteAccountNameInput] = useState('')
+  const [deleteAccountBusy, setDeleteAccountBusy] = useState(false)
+
+  const [deleteTransactionOpen, setDeleteTransactionOpen] = useState(false)
+  const [deleteTransactionTarget, setDeleteTransactionTarget] = useState<AccountTransaction | null>(null)
+  const [deleteTransactionAmountInput, setDeleteTransactionAmountInput] = useState('')
+  const [deleteTransactionBusy, setDeleteTransactionBusy] = useState(false)
 
   const loadPaymentContext = useCallback(async (plist: Project[]) => {
     const opts: TransactionPaymentOption[] = []
@@ -99,6 +170,16 @@ export function AccountsPage() {
   }, [selectedAccountId, loadTransactions])
 
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId)
+  const deleteAccountNameOk =
+    !!deleteAccountTarget && deleteAccountNameInput.trim() === deleteAccountTarget.name
+  const deleteAccountCanSubmit = deleteAccountNameOk && !deleteAccountBusy
+
+  const deleteTransactionExpectedAmount =
+    deleteTransactionTarget ? canonicalAmountString(deleteTransactionTarget.amount) : ''
+  const deleteTransactionAmountOk =
+    !!deleteTransactionTarget &&
+    deleteTransactionAmountInput.trim() === (deleteTransactionExpectedAmount || '')
+  const deleteTransactionCanSubmit = deleteTransactionAmountOk && !deleteTransactionBusy
 
   const projectNameById = useMemo(() => {
     const m = new Map<string, string>()
@@ -108,6 +189,162 @@ export function AccountsPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
+      {deleteAccountOpen && deleteAccountTarget ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-account-title"
+        >
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+            <h3 id="delete-account-title" className="text-lg font-medium text-slate-900">
+              Delete account
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              This will permanently remove this account and all its transactions. This cannot be
+              undone.
+            </p>
+            <p className="mt-3 text-sm text-slate-600">
+              Type the account name exactly as shown below to confirm:
+            </p>
+            <p className="mt-2 rounded-lg bg-slate-100 px-3 py-2 font-medium text-slate-900">
+              {deleteAccountTarget.name}
+            </p>
+            <label className="mt-4 block">
+              <span className="text-xs font-medium text-slate-600">Account name</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                value={deleteAccountNameInput}
+                onChange={(e) => setDeleteAccountNameInput(e.target.value)}
+                placeholder={deleteAccountTarget.name}
+                autoComplete="off"
+                autoFocus
+              />
+            </label>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                disabled={deleteAccountBusy}
+                onClick={() => {
+                  setDeleteAccountOpen(false)
+                  setDeleteAccountTarget(null)
+                  setDeleteAccountNameInput('')
+                  setDeleteAccountBusy(false)
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                disabled={!deleteAccountCanSubmit}
+                onClick={() => {
+                  if (!deleteAccountCanSubmit || !deleteAccountTarget) return
+                  setDeleteAccountBusy(true)
+                  setErr(null)
+                  void (async () => {
+                    try {
+                      await api.deleteAccount(deleteAccountTarget.id)
+                      if (selectedAccountId === deleteAccountTarget.id) setSelectedAccountId(null)
+                      await loadAccountsAndMeta()
+                      setDeleteAccountOpen(false)
+                      setDeleteAccountTarget(null)
+                      setDeleteAccountNameInput('')
+                      setDeleteAccountBusy(false)
+                    } catch (er) {
+                      setErr(er instanceof Error ? er.message : 'Delete failed.')
+                      setDeleteAccountBusy(false)
+                    }
+                  })()
+                }}
+              >
+                {deleteAccountBusy ? 'Deleting…' : 'Delete account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteTransactionOpen && deleteTransactionTarget && selectedAccount ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-transaction-title"
+        >
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+            <h3 id="delete-transaction-title" className="text-lg font-medium text-slate-900">
+              Delete transaction
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              This will permanently remove this transaction from the account ledger. This cannot be
+              undone.
+            </p>
+            <p className="mt-3 text-sm text-slate-600">
+              Type the transaction amount exactly as shown below to confirm:
+            </p>
+            <p className="mt-2 rounded-lg bg-slate-100 px-3 py-2 font-medium text-slate-900">
+              {deleteTransactionExpectedAmount} ({selectedAccount.currency})
+            </p>
+            <label className="mt-4 block">
+              <span className="text-xs font-medium text-slate-600">Transaction amount</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                value={deleteTransactionAmountInput}
+                onChange={(e) => setDeleteTransactionAmountInput(e.target.value)}
+                placeholder={deleteTransactionExpectedAmount}
+                autoComplete="off"
+                autoFocus
+                inputMode="decimal"
+              />
+            </label>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                disabled={deleteTransactionBusy}
+                onClick={() => {
+                  setDeleteTransactionOpen(false)
+                  setDeleteTransactionTarget(null)
+                  setDeleteTransactionAmountInput('')
+                  setDeleteTransactionBusy(false)
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                disabled={!deleteTransactionCanSubmit}
+                onClick={() => {
+                  if (!deleteTransactionCanSubmit || !deleteTransactionTarget || !selectedAccount)
+                    return
+                  setDeleteTransactionBusy(true)
+                  setErr(null)
+                  void (async () => {
+                    try {
+                      await api.deleteAccountTransaction(deleteTransactionTarget.id, selectedAccount.id)
+                      await loadAccountsAndMeta()
+                      await loadTransactions(selectedAccount.id)
+                      setDeleteTransactionOpen(false)
+                      setDeleteTransactionTarget(null)
+                      setDeleteTransactionAmountInput('')
+                      setDeleteTransactionBusy(false)
+                    } catch (er) {
+                      setErr(er instanceof Error ? er.message : 'Delete failed.')
+                      setDeleteTransactionBusy(false)
+                    }
+                  })()
+                }}
+              >
+                {deleteTransactionBusy ? 'Deleting…' : 'Delete transaction'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Accounts</h1>
@@ -120,7 +357,10 @@ export function AccountsPage() {
           <button
             type="button"
             className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-            onClick={() => setShowAddAccountPanel(true)}
+            onClick={() => {
+              setEditingAccount(null)
+              setShowAddAccountPanel(true)
+            }}
           >
             Add account
           </button>
@@ -186,25 +426,34 @@ export function AccountsPage() {
                           {formatMoney(balances[a.id] ?? 0, a.currency)}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            className="text-xs text-red-600 hover:underline"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              if (!confirm('Delete this account and all its transactions?')) return
-                              void (async () => {
-                                try {
-                                  await api.deleteAccount(a.id)
-                                  if (selectedAccountId === a.id) setSelectedAccountId(null)
-                                  await loadAccountsAndMeta()
-                                } catch (er) {
-                                  setErr(er instanceof Error ? er.message : 'Delete failed.')
-                                }
-                              })()
-                            }}
-                          >
-                            Remove
-                          </button>
+                          <div className="flex justify-end gap-1">
+                            <button
+                              type="button"
+                              className={iconBtnClass('neutral')}
+                              aria-label={`Edit account ${a.name}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditingAccount(a)
+                                setShowAddAccountPanel(true)
+                              }}
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className={iconBtnClass('danger')}
+                              aria-label={`Remove account ${a.name}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setDeleteAccountTarget(a)
+                                setDeleteAccountNameInput('')
+                                setDeleteAccountBusy(false)
+                                setDeleteAccountOpen(true)
+                              }}
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -242,6 +491,7 @@ export function AccountsPage() {
                       <th className="px-3 py-2">Date</th>
                       <th className="px-3 py-2">Entry</th>
                       <th className="px-3 py-2">Amount</th>
+                      <th className="px-3 py-2">Running balance</th>
                       <th className="px-3 py-2">Project</th>
                       <th className="px-3 py-2">Description</th>
                       <th className="px-3 py-2">Payment</th>
@@ -251,7 +501,7 @@ export function AccountsPage() {
                   <tbody>
                     {transactions.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
+                        <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
                           No transactions yet.
                         </td>
                       </tr>
@@ -259,9 +509,26 @@ export function AccountsPage() {
                       transactions.map((t) => (
                         <tr key={t.id} className="border-t border-slate-100">
                           <td className="px-3 py-2">{formatDate(t.occurredOn)}</td>
-                          <td className="px-3 py-2 capitalize">{t.entryType}</td>
-                          <td className="px-3 py-2 font-mono">
+                          <td
+                            className={[
+                              'px-3 py-2 capitalize',
+                              t.entryType === 'debit' ? 'text-emerald-700' : 'text-red-700',
+                            ].join(' ')}
+                          >
+                            {t.entryType}
+                          </td>
+                          <td
+                            className={[
+                              'px-3 py-2 font-mono',
+                              t.entryType === 'debit' ? 'text-emerald-700' : 'text-red-700',
+                            ].join(' ')}
+                          >
                             {formatMoney(t.amount, selectedAccount.currency)}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-slate-800">
+                            {t.runningBalance == null
+                              ? '—'
+                              : formatMoney(t.runningBalance, selectedAccount.currency)}
                           </td>
                           <td className="px-3 py-2 text-xs text-slate-600">
                             {t.projectId ? projectNameById.get(t.projectId) ?? '—' : '—'}
@@ -280,31 +547,27 @@ export function AccountsPage() {
                             <div className="flex flex-wrap justify-end gap-2">
                               <button
                                 type="button"
-                                className="text-xs text-teal-700 hover:underline"
+                                className={iconBtnClass('neutral')}
+                                aria-label="Edit transaction"
                                 onClick={() => {
                                   setEditingTransaction(t)
                                   setShowTransactionPanel(true)
                                 }}
                               >
-                                Edit
+                                <PencilIcon className="h-4 w-4" />
                               </button>
                               <button
                                 type="button"
-                                className="text-xs text-red-600 hover:underline"
+                                className={iconBtnClass('danger')}
+                                aria-label={`Remove transaction ${formatMoney(t.amount, selectedAccount.currency)}`}
                                 onClick={() => {
-                                  if (!confirm('Remove this transaction?')) return
-                                  void (async () => {
-                                    try {
-                                      await api.deleteAccountTransaction(t.id, selectedAccount.id)
-                                      await loadAccountsAndMeta()
-                                      await loadTransactions(selectedAccount.id)
-                                    } catch (er) {
-                                      setErr(er instanceof Error ? er.message : 'Delete failed.')
-                                    }
-                                  })()
+                                  setDeleteTransactionTarget(t)
+                                  setDeleteTransactionAmountInput('')
+                                  setDeleteTransactionBusy(false)
+                                  setDeleteTransactionOpen(true)
                                 }}
                               >
-                                Remove
+                                <TrashIcon className="h-4 w-4" />
                               </button>
                             </div>
                           </td>
@@ -324,7 +587,11 @@ export function AccountsPage() {
           <div className="absolute inset-y-0 right-0 w-full max-w-xl">
             <AccountAddPanel
               projects={projects}
-              onClose={() => setShowAddAccountPanel(false)}
+              editingAccount={editingAccount}
+              onClose={() => {
+                setShowAddAccountPanel(false)
+                setEditingAccount(null)
+              }}
               onRefresh={loadAccountsAndMeta}
               onError={setErr}
               className="h-full overflow-y-auto rounded-none border-y-0 border-r-0 p-6 shadow-xl"

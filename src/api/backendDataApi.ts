@@ -548,6 +548,9 @@ export async function createAccountTransaction(input: {
   amount: number
   entryType: 'debit' | 'credit'
   description?: string
+  bankMemo?: string
+  transactionCategory?: string
+  plotIds?: string[]
   occurredOn: string
   paymentId?: string
   projectId?: string
@@ -560,9 +563,12 @@ export async function createAccountTransaction(input: {
         amount: input.amount,
         entryType: input.entryType,
         description: input.description?.trim(),
+        bankMemo: input.bankMemo?.trim(),
+        transactionCategory: input.transactionCategory?.trim(),
         occurredOn: input.occurredOn,
         paymentId: input.paymentId,
         projectId: input.projectId,
+        plotIds: input.plotIds,
       }),
     },
   )
@@ -575,6 +581,9 @@ export async function updateAccountTransaction(
     amount: number
     entryType: 'debit' | 'credit'
     description?: string
+    bankMemo?: string
+    transactionCategory?: string
+    plotIds?: string[]
     occurredOn: string
     paymentId?: string
     projectId?: string
@@ -588,12 +597,19 @@ export async function updateAccountTransaction(
         amount: patch.amount,
         entryType: patch.entryType,
         description: patch.description?.trim(),
+        bankMemo: patch.bankMemo?.trim(),
+        transactionCategory: patch.transactionCategory?.trim(),
         occurredOn: patch.occurredOn,
         paymentId: patch.paymentId,
         projectId: patch.projectId,
+        plotIds: patch.plotIds,
       }),
     },
   )
+}
+
+export async function listAccountTransactionCategories(): Promise<string[]> {
+  return apiRequest<string[]>('/api/v1/accounts/transaction-categories')
 }
 
 export async function deleteAccountTransaction(

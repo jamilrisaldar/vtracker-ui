@@ -134,6 +134,10 @@ export interface AccountTransaction {
   amount: number
   entryType: 'debit' | 'credit'
   description?: string
+  bankMemo?: string
+  transactionCategory?: string
+  runningBalance?: number
+  plotIds?: string[]
   occurredOn: string
   paymentId?: string
   createdAt: string
