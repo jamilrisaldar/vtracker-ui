@@ -51,11 +51,11 @@ export interface LandPlot {
   /** First width × length (feet). Required for regular plots; irregular plots use this with pair 2. */
   widthFeet?: number
   lengthFeet?: number
-  /** Second width × length (feet). Set for irregular plots; computed area = W1×L1 + W2×L2 unless overridden. */
+  /** Second width / length (feet). Irregular: four consecutive side lengths W1→L1→W2→L2; area from all four unless overridden. */
   widthFeet2?: number
   lengthFeet2?: number
   isIrregular: boolean
-  /** Area from dimensions at last save (W×L or W1×L1+W2×L2); not affected by override. */
+  /** Area from dimensions at last save (W×L or irregular four-side formula); not affected by override. */
   calculatedSquareFeet?: number
   /** When set, displayed sq ft uses this instead of `calculatedSquareFeet`. */
   totalSquareFeetOverride?: number

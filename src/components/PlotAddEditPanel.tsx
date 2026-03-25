@@ -490,7 +490,8 @@ export function PlotAddEditPanel({
             className="rounded border-slate-300"
           />
           <span className="text-sm text-slate-700">
-            Irregular shape (enter both pairs; calculated area = W1×L1 + W2×L2 unless you override)
+            Irregular shape: enter four side lengths in order (W1 → L1 → W2 → L2 ft). Area uses all four
+            sides (cyclic quadrilateral); override if you need an exact survey figure.
           </span>
         </label>
 
@@ -552,7 +553,7 @@ export function PlotAddEditPanel({
           <p className="text-xs font-medium text-slate-600">Area</p>
           <p className="mt-1 text-sm text-slate-800">
             Calculated from dimensions
-            {isIrregular ? ' (W1×L1 + W2×L2)' : ''}:{' '}
+            {isIrregular ? ' (4 sides)' : ''}:{' '}
             {computedFromDims != null
               ? `${computedFromDims.toLocaleString(undefined, { maximumFractionDigits: 2 })} sq ft`
               : '—'}

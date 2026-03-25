@@ -13,6 +13,15 @@ function dimFt(v: unknown): number | undefined {
   return n
 }
 
+/** Consecutive sides W1→L1→W2→L2 (feet); Brahmagupta cyclic quadrilateral (matches server). */
+function areaCyclicQuadrilateralFourSides(a: number, b: number, c: number, d: number): number | null {
+  if (!(a > 0 && b > 0 && c > 0 && d > 0)) return null
+  const s = (a + b + c + d) / 2
+  const inner = (s - a) * (s - b) * (s - c) * (s - d)
+  if (!(inner > 0) || !Number.isFinite(inner)) return null
+  return Math.sqrt(inner)
+}
+
 /** Area from dimensions only (matches server `calculatedSquareFeet` formula). */
 export function plotCalculatedSqFtFromDimensions(p: {
   isIrregular: boolean
@@ -27,7 +36,7 @@ export function plotCalculatedSqFtFromDimensions(p: {
     const w2 = dimFt(p.widthFeet2)
     const l2 = dimFt(p.lengthFeet2)
     if (w1 != null && l1 != null && w2 != null && l2 != null) {
-      return w1 * l1 + w2 * l2
+      return areaCyclicQuadrilateralFourSides(w1, l1, w2, l2)
     }
     return null
   }
@@ -69,7 +78,7 @@ export function plotDimensionsLabel(p: LandPlot): string {
       dimFt(w2) != null &&
       dimFt(l2) != null
     ) {
-      return `${w1}×${l1}\n+ ${w2}×${l2}\n(irr.)`
+      return `${w1} → ${l1} → ${w2} → ${l2} ft (irr.)`
     }
     return '—'
   }

@@ -82,6 +82,73 @@ function IconTrash({ className }: { className?: string }) {
   )
 }
 
+function IconCheckCircle({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={18}
+      height={18}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  )
+}
+
+function IconCircleMinus({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={18}
+      height={18}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 12h8" />
+    </svg>
+  )
+}
+
+function IconBookmarkFilled({ className }: { className?: string }) {
+  return (
+    <svg className={className} width={18} height={18} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1z" />
+    </svg>
+  )
+}
+
+function IconBookmarkOutline({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={18}
+      height={18}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1z" />
+    </svg>
+  )
+}
+
 const iconBtnBase =
   'inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-200 p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-1 disabled:opacity-50'
 
@@ -125,7 +192,7 @@ export function PlotsTab({
         <div>
           <h2 className="text-lg font-medium text-slate-900">Land plots</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Track dimensions (feet), area (regular or irregular W1×L1 + W2×L2), pricing, and sale status.
+            Track dimensions (feet), area (regular or irregular four sides), pricing, and sale status.
           </p>
         </div>
         <button
@@ -241,49 +308,49 @@ export function PlotsTab({
           <table className="min-w-full text-left text-sm">
             <thead className="text-xs uppercase text-slate-500">
               <tr>
-                <th className="sticky top-0 left-0 z-[5] border-b border-r border-slate-200/90 bg-slate-50 px-4 py-3 text-left shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">
+                <th className="sticky top-0 left-0 z-[5] min-w-[7rem] border-b border-r border-slate-200/90 bg-slate-50 px-4 py-3 text-left shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">
                   Plot #
                 </th>
-                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <th className="sticky top-0 z-[2] min-w-[17rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-left">
                   W × L (ft)
                 </th>
-                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <th className="sticky top-0 z-[2] min-w-[6rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-right tabular-nums">
                   Sq ft
                 </th>
-                <th className="sticky top-0 z-[2] min-w-[12rem] max-w-[20rem] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <th className="sticky top-0 z-[2] min-w-[22rem] max-w-[32rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-left">
                   Details
                 </th>
-                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <th className="sticky top-0 z-[2] min-w-[7.5rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-right tabular-nums">
                   Posted $/ft
                 </th>
-                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <th className="sticky top-0 z-[2] min-w-[8rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-right tabular-nums">
                   Posted total
                 </th>
-                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <th className="sticky top-0 z-[2] min-w-[7.5rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-right tabular-nums">
                   Final $/ft
                 </th>
-                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <th className="sticky top-0 z-[2] min-w-[8rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-right tabular-nums">
                   Final total
                 </th>
-                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <th className="sticky top-0 z-[2] min-w-[8rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-left">
                   Party
                 </th>
-                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <th className="sticky top-0 z-[2] w-[3.25rem] min-w-[3.25rem] border-b border-slate-200 bg-slate-50 px-2 py-3 text-center">
                   Curr.
                 </th>
-                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <th className="sticky top-0 z-[2] w-14 min-w-[3.5rem] border-b border-slate-200 bg-slate-50 px-2 py-3 text-center">
                   Public
                 </th>
-                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <th className="sticky top-0 z-[2] w-14 min-w-[3.5rem] border-b border-slate-200 bg-slate-50 px-2 py-3 text-center">
                   Res.
                 </th>
-                <th className="sticky top-0 z-[2] max-w-[100px] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <th className="sticky top-0 z-[2] min-w-[9rem] max-w-[14rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-left">
                   Notes
                 </th>
-                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <th className="sticky top-0 z-[2] min-w-[7rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-left">
                   Status
                 </th>
-                <th className="sticky top-0 z-[2] border-b border-slate-200 bg-slate-50 px-4 py-3" />
+                <th className="sticky top-0 z-[2] w-[7.5rem] min-w-[7.5rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-right" />
               </tr>
             </thead>
             <tbody>
@@ -301,59 +368,65 @@ export function PlotsTab({
                     <td className={plotTableStickyPlotNumberCellClassName(p)}>
                       {p.plotNumber ?? '—'}
                     </td>
-                    <td className="whitespace-pre-line px-4 py-3 font-mono text-xs leading-snug text-slate-800 align-top">
+                    <td className="min-w-[17rem] whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-800 align-top">
                       {plotDimensionsLabel(p)}
                     </td>
-                    <td className="px-4 py-3 text-slate-600 align-top tabular-nums">
+                    <td className="min-w-[6rem] px-4 py-3 text-right align-top tabular-nums text-slate-600">
                       {sqFt != null && sqFt > 0
                         ? sqFt.toLocaleString(undefined, {
                             maximumFractionDigits: 2,
                           })
                         : '—'}
                     </td>
-                    <td className="min-w-[12rem] max-w-[20rem] whitespace-normal break-words px-4 py-3 text-slate-600 align-top">
+                    <td className="min-w-[22rem] max-w-[32rem] whitespace-normal break-words px-4 py-3 text-slate-600 align-top">
                       {p.plotDetails?.trim() ? p.plotDetails : '—'}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="min-w-[7.5rem] px-4 py-3 text-right tabular-nums">
                       {formatMoneyInrShorthand(p.pricePerSqft, p.currency)}
                     </td>
-                    <td className="px-4 py-3 font-medium">
+                    <td className="min-w-[8rem] px-4 py-3 text-right font-medium tabular-nums">
                       {p.totalPurchasePrice != null
                         ? formatMoneyInrShorthand(p.totalPurchasePrice, p.currency)
                         : '—'}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="min-w-[7.5rem] px-4 py-3 text-right tabular-nums text-slate-700">
                       {p.finalPricePerSqft != null
                         ? formatMoneyInrShorthand(p.finalPricePerSqft, p.currency)
                         : '—'}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="min-w-[8rem] px-4 py-3 text-right tabular-nums text-slate-700">
                       {p.finalTotalPurchasePrice != null
                         ? formatMoneyInrShorthand(p.finalTotalPurchasePrice, p.currency)
                         : '—'}
                     </td>
-                    <td className="max-w-[120px] truncate px-4 py-3 text-slate-600" title={p.purchaseParty}>
+                    <td className="min-w-[8rem] max-w-[12rem] truncate px-4 py-3 text-slate-600" title={p.purchaseParty}>
                       {trunc(p.purchaseParty, 24)}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{p.currency}</td>
-                    <td className="px-4 py-3">
-                      {p.isPublicUse ? (
-                        <span className="text-xs font-medium text-sky-800">Yes</span>
-                      ) : (
-                        <span className="text-slate-500">No</span>
-                      )}
+                    <td className="w-[3.25rem] min-w-[3.25rem] px-2 py-3 text-center text-slate-600">
+                      {p.currency}
                     </td>
-                    <td className="px-4 py-3">
-                      {p.isReserved ? (
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
-                          Yes
-                        </span>
-                      ) : (
-                        <span className="text-slate-500">No</span>
-                      )}
+                    <td className="w-14 min-w-[3.5rem] px-2 py-3 align-middle">
+                      <div className="flex justify-center" title={p.isPublicUse ? 'Public use' : 'Not public use'}>
+                        <span className="sr-only">{p.isPublicUse ? 'Public use: yes' : 'Public use: no'}</span>
+                        {p.isPublicUse ? (
+                          <IconCheckCircle className="text-sky-600" />
+                        ) : (
+                          <IconCircleMinus className="text-slate-400" />
+                        )}
+                      </div>
+                    </td>
+                    <td className="w-14 min-w-[3.5rem] px-2 py-3 align-middle">
+                      <div className="flex justify-center" title={p.isReserved ? 'Reserved' : 'Not reserved'}>
+                        <span className="sr-only">{p.isReserved ? 'Reserved: yes' : 'Reserved: no'}</span>
+                        {p.isReserved ? (
+                          <IconBookmarkFilled className="text-amber-600" />
+                        ) : (
+                          <IconBookmarkOutline className="text-slate-400" />
+                        )}
+                      </div>
                     </td>
                     <td
-                      className="max-w-[100px] truncate px-4 py-3 text-slate-600"
+                      className="min-w-[9rem] max-w-[14rem] truncate px-4 py-3 text-slate-600"
                       title={p.notes}
                     >
                       {trunc(p.notes, 32)}

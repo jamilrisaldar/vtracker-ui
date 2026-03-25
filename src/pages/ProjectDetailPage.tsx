@@ -1,16 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import type {
-  Invoice,
-  LandPlot,
-  Payment,
-  Phase,
-  Project,
-  ProjectDocument,
-  Vendor,
-} from '../types'
+import type { Project } from '../types'
 import * as api from '../api/dataApi'
-import type { ProjectReport } from '../types'
 import {
   tabs,
   type TabId,
@@ -21,10 +12,21 @@ import {
   DocumentsTab,
   ReportsTab,
 } from '../components/project-detail'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import {
+  ensureTabData,
+  fetchDocuments,
+  fetchPhases,
+  fetchPlots,
+  fetchVendorBilling,
+  loadProject,
+  projectUpdated,
+} from '../store/slices/projectDetailSlice'
 
 export function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const [searchParams, setSearchParams] = useSearchParams()
   const rawTab = searchParams.get('tab')
   const tab: TabId = tabs.some((t) => t.id === rawTab) ? (rawTab as TabId) : 'overview'
@@ -32,63 +34,35 @@ export function ProjectDetailPage() {
     setSearchParams({ tab: t }, { replace: true })
   }
 
-  const [project, setProject] = useState<Project | null>(null)
-  const [phases, setPhases] = useState<Phase[]>([])
-  const [plots, setPlots] = useState<LandPlot[]>([])
-  const [vendors, setVendors] = useState<Vendor[]>([])
-  const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [payments, setPayments] = useState<Payment[]>([])
-  const [documents, setDocuments] = useState<ProjectDocument[]>([])
-  const [report, setReport] = useState<ProjectReport | null>(null)
-  const [loading, setLoading] = useState(true)
+  const {
+    project,
+    phases,
+    plots,
+    vendors,
+    invoices,
+    payments,
+    documents,
+    report,
+    status,
+    error: loadError,
+    reportLoading,
+    reportError,
+  } = useAppSelector((s) => s.projectDetail)
+
   const [err, setErr] = useState<string | null>(null)
   const [deleteProjectOpen, setDeleteProjectOpen] = useState(false)
   const [deleteProjectNameInput, setDeleteProjectNameInput] = useState('')
   const [deleteProjectBusy, setDeleteProjectBusy] = useState(false)
 
-  const load = useCallback(async () => {
+  useEffect(() => {
     if (!projectId) return
-    setErr(null)
-    setLoading(true)
-    try {
-      const p = await api.getProject(projectId)
-      setProject(p)
-      if (!p) {
-        setPhases([])
-        setPlots([])
-        setVendors([])
-        setInvoices([])
-        setPayments([])
-        setDocuments([])
-        setReport(null)
-        return
-      }
-      const [ph, pl, v, inv, pay, doc] = await Promise.all([
-        api.listPhases(projectId),
-        api.listPlots(projectId),
-        api.listVendors(projectId),
-        api.listInvoices(projectId),
-        api.listPayments(projectId),
-        api.listDocuments(projectId),
-      ])
-      setPhases(ph)
-      setPlots(pl)
-      setVendors(v)
-      setInvoices(inv)
-      setPayments(pay)
-      setDocuments(doc)
-      const r = await api.getProjectReport(projectId)
-      setReport(r)
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to load.')
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId])
+    void dispatch(loadProject(projectId))
+  }, [projectId, dispatch])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    if (!projectId || !project) return
+    void dispatch(ensureTabData({ projectId, tab }))
+  }, [projectId, tab, project, dispatch])
 
   const vendorName = useMemo(() => {
     const m = new Map<string, string>()
@@ -96,11 +70,40 @@ export function ProjectDetailPage() {
     return m
   }, [vendors])
 
+  const refreshPhases = useCallback(async () => {
+    if (!projectId) return
+    await dispatch(fetchPhases(projectId))
+  }, [projectId, dispatch])
+
+  const refreshPlots = useCallback(async () => {
+    if (!projectId) return
+    await dispatch(fetchPlots(projectId))
+  }, [projectId, dispatch])
+
+  const refreshVendorBilling = useCallback(async () => {
+    if (!projectId) return
+    await dispatch(fetchVendorBilling(projectId))
+  }, [projectId, dispatch])
+
+  const refreshDocumentsOnly = useCallback(async () => {
+    if (!projectId) return
+    await dispatch(fetchDocuments(projectId))
+  }, [projectId, dispatch])
+
+  const onOverviewSaved = useCallback(
+    async (patch: Partial<Pick<Project, 'name' | 'description' | 'location' | 'status'>>) => {
+      if (!projectId) return
+      const updated = await api.updateProject(projectId, patch)
+      dispatch(projectUpdated(updated))
+    },
+    [projectId, dispatch],
+  )
+
   if (!projectId) {
     return <p className="text-sm text-slate-600">Missing project.</p>
   }
 
-  if (loading && !project) {
+  if (status === 'loading' && !project) {
     return <p className="text-sm text-slate-600">Loading…</p>
   }
 
@@ -111,6 +114,9 @@ export function ProjectDetailPage() {
         <Link className="font-medium underline" to="/projects">
           Back to projects
         </Link>
+        {loadError ? (
+          <p className="mt-2 text-amber-800">{loadError}</p>
+        ) : null}
       </div>
     )
   }
@@ -245,19 +251,13 @@ export function ProjectDetailPage() {
 
       <div className="mt-8">
         {tab === 'overview' && (
-          <OverviewTab
-            project={project}
-            onSaved={async (patch) => {
-              const updated = await api.updateProject(projectId, patch)
-              setProject(updated)
-            }}
-          />
+          <OverviewTab project={project} onSaved={onOverviewSaved} />
         )}
         {tab === 'phases' && (
           <PhasesTab
             projectId={projectId}
             phases={phases}
-            onRefresh={load}
+            onRefresh={refreshPhases}
             onError={setErr}
           />
         )}
@@ -265,7 +265,7 @@ export function ProjectDetailPage() {
           <PlotsTab
             projectId={projectId}
             plots={plots}
-            onRefresh={load}
+            onRefresh={refreshPlots}
             onError={setErr}
           />
         )}
@@ -276,7 +276,7 @@ export function ProjectDetailPage() {
             invoices={invoices}
             payments={payments}
             vendorName={vendorName}
-            onRefresh={load}
+            onRefresh={refreshVendorBilling}
             onError={setErr}
           />
         )}
@@ -287,12 +287,23 @@ export function ProjectDetailPage() {
             vendors={vendors}
             invoices={invoices}
             payments={payments}
-            onRefresh={load}
+            onRefresh={refreshDocumentsOnly}
             onError={setErr}
           />
         )}
-        {tab === 'reports' && report && (
+        {tab === 'reports' && reportLoading && (
+          <p className="text-sm text-slate-600">Loading report…</p>
+        )}
+        {tab === 'reports' && !reportLoading && reportError && (
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+            {reportError}
+          </p>
+        )}
+        {tab === 'reports' && !reportLoading && !reportError && report && (
           <ReportsTab report={report} vendorName={vendorName} />
+        )}
+        {tab === 'reports' && !reportLoading && !reportError && !report && (
+          <p className="text-sm text-slate-600">No report data.</p>
         )}
       </div>
     </div>
