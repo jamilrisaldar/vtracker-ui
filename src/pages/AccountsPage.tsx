@@ -120,6 +120,8 @@ function iconBtnClass(tone: 'neutral' | 'danger' = 'neutral') {
 const tableActionsFirstColClass = 'w-[2.75rem] min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-2 py-3'
 const tableActionsLastColClass = 'w-[2.75rem] min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-2 py-3'
 const txTableActionsFirstColClass = 'w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] whitespace-nowrap px-2 py-2'
+/** Fixed width + single-line ellipsis for transaction description (full text on hover via `title`). */
+const txDescriptionColClass = 'w-[14rem] min-w-[14rem] max-w-[14rem]'
 
 export function AccountsPage() {
   const dispatch = useAppDispatch()
@@ -760,7 +762,7 @@ export function AccountsPage() {
                       <th className="whitespace-nowrap px-3 py-2">Running balance</th>
                       <th className="whitespace-nowrap px-3 py-2">Project</th>
                       <th className="whitespace-nowrap px-3 py-2">Plots</th>
-                      <th className="whitespace-nowrap px-3 py-2">Description</th>
+                      <th className={`whitespace-nowrap px-3 py-2 ${txDescriptionColClass}`}>Description</th>
                       <th className="whitespace-nowrap px-3 py-2">Bank memo</th>
                       <th className="whitespace-nowrap px-3 py-2">Category</th>
                       <th className="whitespace-nowrap px-3 py-2">Payment</th>
@@ -846,7 +848,20 @@ export function AccountsPage() {
                           >
                             {t.plotNumberLabels ?? '—'}
                           </td>
-                          <td className="px-3 py-2 text-slate-600">{t.description ?? '—'}</td>
+                          <td
+                            className={`overflow-hidden px-3 py-2 align-middle ${txDescriptionColClass}`}
+                          >
+                            {t.description?.trim() ? (
+                              <div
+                                className="truncate text-slate-600"
+                                title={t.description}
+                              >
+                                {t.description}
+                              </div>
+                            ) : (
+                              <span className="text-slate-600">—</span>
+                            )}
+                          </td>
                           <td
                             className="max-w-[12rem] truncate px-3 py-2 text-xs text-slate-600"
                             title={t.bankMemo ?? undefined}
