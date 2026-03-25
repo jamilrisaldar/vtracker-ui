@@ -1,4 +1,5 @@
 import { configureStore } from '@reduxjs/toolkit'
+import { accountsPageReducer } from './slices/accountsPageSlice'
 import { authReducer } from './slices/authSlice'
 import { projectDetailReducer } from './slices/projectDetailSlice'
 
@@ -7,6 +8,7 @@ export const store = configureStore({
   reducer: {
     auth: authReducer,
     projectDetail: projectDetailReducer,
+    accountsPage: accountsPageReducer,
   },
 })
 

@@ -71,12 +71,21 @@ export function plotTableRowClassName(p: Pick<LandPlot, 'status' | 'isReserved'>
   ].join(' ')
 }
 
-/** Sticky first column (Plot #): opaque bg + shadow so scrolled content does not show through. */
+/** Sticky first column (row actions): fixed width — keep `left-[5.5rem]` on Plot # column in sync. */
+export function plotTableStickyActionsCellClassName(): string {
+  return [
+    'sticky left-0 z-[6] w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem]',
+    'px-2 py-3 text-left align-middle',
+    'border-r border-slate-200/90 bg-white shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]',
+  ].join(' ')
+}
+
+/** Sticky second column (Plot #): opaque bg + shadow so scrolled content does not show through. */
 export function plotTableStickyPlotNumberCellClassName(
   p: Pick<LandPlot, 'status' | 'isReserved'>,
 ): string {
   return [
-    'sticky left-0 z-[1] min-w-[7rem] px-4 py-3 font-medium text-slate-900',
+    'sticky left-[5.5rem] z-[5] min-w-[7rem] px-4 py-3 font-medium text-slate-900',
     'border-r border-slate-200/90 shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]',
     PLOT_STATUS_STICKY_CELL_BG[p.status] ?? PLOT_STATUS_STICKY_CELL_BG.open,
     p.isReserved ? 'border-l-4 border-l-amber-500' : '',

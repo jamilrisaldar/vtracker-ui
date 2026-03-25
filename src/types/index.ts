@@ -117,6 +117,13 @@ export interface Payment {
   comments?: string
 }
 
+/** Payment row + project label for account transaction linking (Accounts page). */
+export type TransactionPaymentOption = {
+  payment: Payment
+  projectId: string
+  projectName: string
+}
+
 export interface Account {
   id: string
   projectId?: string
@@ -125,6 +132,17 @@ export interface Account {
   accountLocation?: string
   currency: string
   createdAt: string
+}
+
+/** Optional filters for GET …/accounts/:id/transactions */
+export type AccountTransactionListFilters = {
+  occurredOnFrom?: string
+  occurredOnTo?: string
+  /** Restrict to lines tagged with this project (matches `project_id` on the transaction). */
+  projectId?: string
+  descriptionContains?: string
+  bankMemoContains?: string
+  transactionCategoryContains?: string
 }
 
 export interface AccountTransaction {
@@ -138,6 +156,8 @@ export interface AccountTransaction {
   transactionCategory?: string
   runningBalance?: number
   plotIds?: string[]
+  /** Comma-separated plot numbers from linked project plots (for display). */
+  plotNumberLabels?: string
   occurredOn: string
   paymentId?: string
   createdAt: string

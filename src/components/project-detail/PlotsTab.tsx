@@ -7,6 +7,7 @@ import { PlotAddEditPanel } from '../PlotAddEditPanel'
 import {
   plotStatusLabel,
   plotTableRowClassName,
+  plotTableStickyActionsCellClassName,
   plotTableStickyPlotNumberCellClassName,
 } from './constants'
 
@@ -308,7 +309,13 @@ export function PlotsTab({
           <table className="min-w-full text-left text-sm">
             <thead className="text-xs uppercase text-slate-500">
               <tr>
-                <th className="sticky top-0 left-0 z-[5] min-w-[7rem] border-b border-r border-slate-200/90 bg-slate-50 px-4 py-3 text-left shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">
+                <th
+                  className="sticky top-0 left-0 z-[6] w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] whitespace-nowrap border-b border-r border-slate-200/90 bg-slate-50 px-2 py-3 text-left shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]"
+                  scope="col"
+                >
+                  <span className="sr-only">Actions</span>
+                </th>
+                <th className="sticky top-0 left-[5.5rem] z-[5] min-w-[7rem] border-b border-r border-slate-200/90 bg-slate-50 px-4 py-3 text-left shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">
                   Plot #
                 </th>
                 <th className="sticky top-0 z-[2] min-w-[17rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-left">
@@ -350,13 +357,15 @@ export function PlotsTab({
                 <th className="sticky top-0 z-[2] min-w-[7rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-left">
                   Status
                 </th>
-                <th className="sticky top-0 z-[2] w-[7.5rem] min-w-[7.5rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-right" />
+                <th className="sticky top-0 z-[2] w-11 min-w-[2.75rem] max-w-[2.75rem] border-b border-slate-200 bg-slate-50 px-2 py-3">
+                  <span className="sr-only">Delete</span>
+                </th>
               </tr>
             </thead>
             <tbody>
             {plots.length === 0 ? (
               <tr>
-                <td colSpan={15} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={16} className="px-4 py-8 text-center text-slate-500">
                   No plots yet. Add one to track this land.
                 </td>
               </tr>
@@ -365,6 +374,36 @@ export function PlotsTab({
                 const sqFt = plotEffectiveSqFt(p)
                 return (
                   <tr key={p.id} className={plotTableRowClassName(p)}>
+                    <td className={plotTableStickyActionsCellClassName()}>
+                      <div className="flex w-[5.5rem] shrink-0 flex-nowrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          className={`${iconBtnBase} shrink-0 text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
+                          aria-label="Edit plot"
+                          title="Edit"
+                          onClick={() => {
+                            setCopyFromPlot(null)
+                            setPanelPlot(p)
+                            setPanelMode('edit')
+                          }}
+                        >
+                          <IconPencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className={`${iconBtnBase} shrink-0 text-slate-600 hover:bg-slate-100`}
+                          aria-label="Copy plot to new row"
+                          title="Copy"
+                          onClick={() => {
+                            setPanelPlot(null)
+                            setCopyFromPlot(p)
+                            setPanelMode('add')
+                          }}
+                        >
+                          <IconCopy className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
                     <td className={plotTableStickyPlotNumberCellClassName(p)}>
                       {p.plotNumber ?? '—'}
                     </td>
@@ -432,47 +471,19 @@ export function PlotsTab({
                       {trunc(p.notes, 32)}
                     </td>
                     <td className="px-4 py-3 text-slate-700">{plotStatusLabel(p.status)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1.5">
-                        <button
-                          type="button"
-                          className={`${iconBtnBase} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
-                          aria-label="Edit plot"
-                          title="Edit"
-                          onClick={() => {
-                            setCopyFromPlot(null)
-                            setPanelPlot(p)
-                            setPanelMode('edit')
-                          }}
-                        >
-                          <IconPencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          className={`${iconBtnBase} text-slate-600 hover:bg-slate-100`}
-                          aria-label="Copy plot to new row"
-                          title="Copy"
-                          onClick={() => {
-                            setPanelPlot(null)
-                            setCopyFromPlot(p)
-                            setPanelMode('add')
-                          }}
-                        >
-                          <IconCopy className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          className={`${iconBtnBase} text-red-600 hover:border-red-200 hover:bg-red-50`}
-                          aria-label="Delete plot"
-                          title="Delete"
-                          onClick={() => {
-                            setDeleteConfirmInput('')
-                            setDeleteTarget(p)
-                          }}
-                        >
-                          <IconTrash className="h-4 w-4" />
-                        </button>
-                      </div>
+                    <td className="w-11 min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-2 py-3 text-center">
+                      <button
+                        type="button"
+                        className={`${iconBtnBase} mx-auto text-red-600 hover:border-red-200 hover:bg-red-50`}
+                        aria-label="Delete plot"
+                        title="Delete"
+                        onClick={() => {
+                          setDeleteConfirmInput('')
+                          setDeleteTarget(p)
+                        }}
+                      >
+                        <IconTrash className="h-4 w-4" />
+                      </button>
                     </td>
                   </tr>
                 )

@@ -4,6 +4,7 @@
 import type {
   Account,
   AccountTransaction,
+  AccountTransactionListFilters,
   DocumentKind,
   Invoice,
   InvoiceStatus,
@@ -335,10 +336,15 @@ export async function deleteAccount(accountId: string): Promise<void> {
   return mock.deleteAccount(accountId)
 }
 
-export async function listAccountTransactions(accountId: string): Promise<AccountTransaction[]> {
-  if (isBackendAuthEnabled()) return backend.listAccountTransactions(accountId)
-  return mock.listAccountTransactions(accountId)
+export async function listAccountTransactions(
+  accountId: string,
+  filters?: AccountTransactionListFilters,
+): Promise<AccountTransaction[]> {
+  if (isBackendAuthEnabled()) return backend.listAccountTransactions(accountId, filters)
+  return mock.listAccountTransactions(accountId, filters)
 }
+
+export type { AccountTransactionListFilters } from '../types'
 
 export async function createAccountTransaction(input: {
   accountId: string

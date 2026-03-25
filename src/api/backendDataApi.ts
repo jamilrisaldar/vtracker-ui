@@ -5,6 +5,7 @@
 import type {
   Account,
   AccountTransaction,
+  AccountTransactionListFilters,
   DocumentKind,
   Invoice,
   InvoiceStatus,
@@ -537,10 +538,22 @@ export async function deleteAccount(accountId: string): Promise<void> {
   await apiRequest<void>(`/api/v1/accounts/${encodeURIComponent(accountId)}`, { method: 'DELETE' })
 }
 
-export async function listAccountTransactions(accountId: string): Promise<AccountTransaction[]> {
-  return apiRequest<AccountTransaction[]>(
-    `/api/v1/accounts/${encodeURIComponent(accountId)}/transactions`,
-  )
+export async function listAccountTransactions(
+  accountId: string,
+  filters?: AccountTransactionListFilters,
+): Promise<AccountTransaction[]> {
+  const sp = new URLSearchParams()
+  if (filters?.occurredOnFrom?.trim()) sp.set('occurredOnFrom', filters.occurredOnFrom.trim())
+  if (filters?.occurredOnTo?.trim()) sp.set('occurredOnTo', filters.occurredOnTo.trim())
+  if (filters?.projectId?.trim()) sp.set('projectId', filters.projectId.trim())
+  if (filters?.descriptionContains?.trim())
+    sp.set('descriptionContains', filters.descriptionContains.trim())
+  if (filters?.bankMemoContains?.trim()) sp.set('bankMemoContains', filters.bankMemoContains.trim())
+  if (filters?.transactionCategoryContains?.trim())
+    sp.set('transactionCategoryContains', filters.transactionCategoryContains.trim())
+  const q = sp.toString()
+  const path = `/api/v1/accounts/${encodeURIComponent(accountId)}/transactions${q ? `?${q}` : ''}`
+  return apiRequest<AccountTransaction[]>(path)
 }
 
 export async function createAccountTransaction(input: {

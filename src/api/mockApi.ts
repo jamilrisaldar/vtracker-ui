@@ -1,6 +1,7 @@
 import type {
   Account,
   AccountTransaction,
+  AccountTransactionListFilters,
   AuthSession,
   DocumentKind,
   Invoice,
@@ -30,6 +31,18 @@ import {
 import { getApiSessionUserId } from './apiAuthState'
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms))
+
+function plotNumberLabelsFromIds(
+  plotIds: string[] | undefined,
+  plots: LandPlot[],
+): string | undefined {
+  if (!plotIds?.length) return undefined
+  const labels = plotIds
+    .map((pid) => plots.find((p) => p.id === pid)?.plotNumber)
+    .filter((s): s is string => Boolean(s?.trim()))
+  if (labels.length === 0) return undefined
+  return [...new Set(labels)].sort((a, b) => a.localeCompare(b)).join(', ')
+}
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -862,7 +875,42 @@ export async function deleteAccount(accountId: string): Promise<void> {
   saveDb(db)
 }
 
-export async function listAccountTransactions(accountId: string): Promise<AccountTransaction[]> {
+function matchesTransactionFilters(
+  t: AccountTransaction,
+  filters: AccountTransactionListFilters | undefined,
+): boolean {
+  if (!filters) return true
+  if (filters.occurredOnFrom?.trim()) {
+    const from = filters.occurredOnFrom.trim()
+    if (t.occurredOn.slice(0, 10) < from) return false
+  }
+  if (filters.occurredOnTo?.trim()) {
+    const to = filters.occurredOnTo.trim()
+    if (t.occurredOn.slice(0, 10) > to) return false
+  }
+  if (filters.descriptionContains?.trim()) {
+    const q = filters.descriptionContains.trim().toLowerCase()
+    if (!(t.description ?? '').toLowerCase().includes(q)) return false
+  }
+  if (filters.bankMemoContains?.trim()) {
+    const q = filters.bankMemoContains.trim().toLowerCase()
+    if (!(t.bankMemo ?? '').toLowerCase().includes(q)) return false
+  }
+  if (filters.transactionCategoryContains?.trim()) {
+    const q = filters.transactionCategoryContains.trim().toLowerCase()
+    if (!(t.transactionCategory ?? '').toLowerCase().includes(q)) return false
+  }
+  if (filters.projectId?.trim()) {
+    const pid = filters.projectId.trim()
+    if (t.projectId !== pid) return false
+  }
+  return true
+}
+
+export async function listAccountTransactions(
+  accountId: string,
+  filters?: AccountTransactionListFilters,
+): Promise<AccountTransaction[]> {
   await delay()
   getUserIdOrThrow()
   const db = loadDb()
@@ -870,7 +918,12 @@ export async function listAccountTransactions(accountId: string): Promise<Accoun
   if (!acc) throw new Error('Not found')
   return db.accountTransactions
     .filter((t) => t.accountId === accountId)
+    .filter((t) => matchesTransactionFilters(t, filters))
     .sort((a, b) => b.occurredOn.localeCompare(a.occurredOn) || b.createdAt.localeCompare(a.createdAt))
+    .map((t) => ({
+      ...t,
+      plotNumberLabels: plotNumberLabelsFromIds(t.plotIds, db.plots),
+    }))
 }
 
 export async function createAccountTransaction(input: {
@@ -926,7 +979,10 @@ export async function createAccountTransaction(input: {
     if (proj) proj.updatedAt = nowIso()
   }
   saveDb(db)
-  return tx
+  return {
+    ...tx,
+    plotNumberLabels: plotNumberLabelsFromIds(tx.plotIds, db.plots),
+  }
 }
 
 export async function updateAccountTransaction(
@@ -997,7 +1053,10 @@ export async function updateAccountTransaction(
   if (txnProjectId && txnProjectId !== prevProjectId) touch(txnProjectId)
 
   saveDb(db)
-  return next
+  return {
+    ...next,
+    plotNumberLabels: plotNumberLabelsFromIds(next.plotIds, db.plots),
+  }
 }
 
 export async function listAccountTransactionCategories(): Promise<string[]> {

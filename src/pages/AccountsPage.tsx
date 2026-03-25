@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { Account, AccountTransaction, Invoice, Project } from '../types'
+import type {
+  Account,
+  AccountTransaction,
+  AccountTransactionListFilters,
+  Invoice,
+  Project,
+} from '../types'
 import * as api from '../api/dataApi'
 import { AccountAddPanel } from '../components/AccountAddPanel'
-import { TransactionFormPanel, type TransactionPaymentOption } from '../components/TransactionFormPanel'
+import { TransactionFormPanel } from '../components/TransactionFormPanel'
+import { clearAccountsPage, fetchAccountsPaymentContext } from '../store/slices/accountsPageSlice'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
 import { formatDate, formatMoney } from '../utils/format'
 
 function ledgerBalance(transactions: AccountTransaction[]): number {
@@ -11,6 +19,15 @@ function ledgerBalance(transactions: AccountTransaction[]): number {
     return sum + (t.entryType === 'debit' ? t.amount : -t.amount)
   }, 0)
 }
+
+const emptyTxFilterDraft = () => ({
+  occurredOnFrom: '',
+  occurredOnTo: '',
+  projectId: '',
+  descriptionContains: '',
+  bankMemoContains: '',
+  transactionCategoryContains: '',
+})
 
 function canonicalAmountString(amount: number): string {
   const r = Math.round(amount * 100) / 100
@@ -33,6 +50,33 @@ function TrashIcon(props: { className?: string }) {
         strokeWidth="1.75"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function CopyIcon(props: { className?: string }) {
+  return (
+    <svg
+      className={props.className ?? 'h-4 w-4'}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect
+        x="8"
+        y="8"
+        width="12"
+        height="12"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <path
+        d="M6 16H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
       />
     </svg>
   )
@@ -66,27 +110,37 @@ function PencilIcon(props: { className?: string }) {
 
 function iconBtnClass(tone: 'neutral' | 'danger' = 'neutral') {
   const base =
-    'inline-flex h-9 w-9 items-center justify-center rounded-lg transition focus:outline-none focus:ring-2 focus:ring-teal-500/40'
+    'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition focus:outline-none focus:ring-2 focus:ring-teal-500/40'
   return tone === 'danger'
     ? `${base} text-red-700 hover:bg-red-50`
     : `${base} text-slate-700 hover:bg-slate-100`
 }
 
+/** Fixed columns: primary actions (first col), delete only (last col); icons must not wrap. */
+const tableActionsFirstColClass = 'w-[2.75rem] min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-2 py-3'
+const tableActionsLastColClass = 'w-[2.75rem] min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-2 py-3'
+const txTableActionsFirstColClass = 'w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] whitespace-nowrap px-2 py-2'
+
 export function AccountsPage() {
+  const dispatch = useAppDispatch()
+  const paymentOptions = useAppSelector((s) => s.accountsPage.paymentOptions)
+  const vendorByIdRecord = useAppSelector((s) => s.accountsPage.vendorById)
+  const invoiceByIdRecord = useAppSelector((s) => s.accountsPage.invoiceById)
+
   const [projects, setProjects] = useState<Project[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [balances, setBalances] = useState<Record<string, number>>({})
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [transactions, setTransactions] = useState<AccountTransaction[]>([])
-  const [paymentOptions, setPaymentOptions] = useState<TransactionPaymentOption[]>([])
-  const [vendorName, setVendorName] = useState<Map<string, string>>(new Map())
-  const [invoiceById, setInvoiceById] = useState<Map<string, Invoice>>(new Map())
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [showAddAccountPanel, setShowAddAccountPanel] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
   const [showTransactionPanel, setShowTransactionPanel] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<AccountTransaction | null>(null)
+  /** Prefill add form from this row (copy); cleared when panel closes or opening add/edit. */
+  const [copyTemplateTransaction, setCopyTemplateTransaction] = useState<AccountTransaction | null>(null)
+  const [txPanelSeq, setTxPanelSeq] = useState(0)
 
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
   const [deleteAccountTarget, setDeleteAccountTarget] = useState<Account | null>(null)
@@ -98,43 +152,30 @@ export function AccountsPage() {
   const [deleteTransactionAmountInput, setDeleteTransactionAmountInput] = useState('')
   const [deleteTransactionBusy, setDeleteTransactionBusy] = useState(false)
 
-  const loadPaymentContext = useCallback(async (plist: Project[]) => {
-    const opts: TransactionPaymentOption[] = []
-    const vmap = new Map<string, string>()
-    const imap = new Map<string, Invoice>()
-    for (const p of plist) {
-      const [pay, ven, inv] = await Promise.all([
-        api.listPayments(p.id),
-        api.listVendors(p.id),
-        api.listInvoices(p.id),
-      ])
-      ven.forEach((v) => vmap.set(v.id, v.name))
-      inv.forEach((i) => imap.set(i.id, i))
-      pay.forEach((pm) =>
-        opts.push({ payment: pm, projectId: p.id, projectName: p.name }),
-      )
-    }
-    setPaymentOptions(opts)
-    setVendorName(vmap)
-    setInvoiceById(imap)
+  const [txFilterDraft, setTxFilterDraft] = useState(emptyTxFilterDraft)
+  const [txFilterApplied, setTxFilterApplied] = useState<AccountTransactionListFilters>({})
+  const [txFiltersVisible, setTxFiltersVisible] = useState(false)
+
+  const loadAccountsCore = useCallback(async (): Promise<Project[]> => {
+    const [accs, plist] = await Promise.all([api.listAccounts(), api.listProjects()])
+    setAccounts(accs)
+    setProjects(plist)
+    const balanceEntries = await Promise.all(
+      accs.map(async (a) => {
+        const txs = await api.listAccountTransactions(a.id)
+        return [a.id, ledgerBalance(txs)] as const
+      }),
+    )
+    setBalances(Object.fromEntries(balanceEntries))
+    return plist
   }, [])
 
-  const loadAccountsAndMeta = useCallback(async () => {
+  /** Accounts + balances only (no vendor/invoice/payment lists). */
+  const refreshAccountsData = useCallback(async () => {
     setLoading(true)
     setErr(null)
     try {
-      const [accs, plist] = await Promise.all([api.listAccounts(), api.listProjects()])
-      setAccounts(accs)
-      setProjects(plist)
-
-      const balanceEntries = await Promise.all(
-        accs.map(async (a) => {
-          const txs = await api.listAccountTransactions(a.id)
-          return [a.id, ledgerBalance(txs)] as const
-        }),
-      )
-      setBalances(Object.fromEntries(balanceEntries))
-      await loadPaymentContext(plist)
+      await loadAccountsCore()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed to load accounts.')
       setAccounts([])
@@ -142,32 +183,86 @@ export function AccountsPage() {
     } finally {
       setLoading(false)
     }
-  }, [loadPaymentContext])
+  }, [loadAccountsCore])
 
-  const loadTransactions = useCallback(async (aid: string) => {
+  const loadTransactions = useCallback(async (aid: string, filters?: AccountTransactionListFilters) => {
     setErr(null)
     try {
-      const txs = await api.listAccountTransactions(aid)
+      const txs = await api.listAccountTransactions(aid, filters)
       setTransactions(txs)
-      const bal = ledgerBalance(txs)
-      setBalances((prev) => ({ ...prev, [aid]: bal }))
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed to load transactions.')
       setTransactions([])
     }
   }, [])
 
+  const applyTransactionFilters = () => {
+    const from = txFilterDraft.occurredOnFrom.trim()
+    const to = txFilterDraft.occurredOnTo.trim()
+    if (from && to && from > to) {
+      setErr('Date from must be on or before date to.')
+      return
+    }
+    setErr(null)
+    const next: AccountTransactionListFilters = {}
+    if (from) next.occurredOnFrom = from
+    if (to) next.occurredOnTo = to
+    if (txFilterDraft.descriptionContains.trim())
+      next.descriptionContains = txFilterDraft.descriptionContains.trim()
+    if (txFilterDraft.bankMemoContains.trim()) next.bankMemoContains = txFilterDraft.bankMemoContains.trim()
+    if (txFilterDraft.transactionCategoryContains.trim())
+      next.transactionCategoryContains = txFilterDraft.transactionCategoryContains.trim()
+    if (txFilterDraft.projectId.trim()) next.projectId = txFilterDraft.projectId.trim()
+    setTxFilterApplied(next)
+  }
+
+  const clearTransactionFilters = () => {
+    setErr(null)
+    setTxFilterDraft(emptyTxFilterDraft())
+    setTxFilterApplied({})
+  }
+
+  const hasActiveTransactionFilters = Object.keys(txFilterApplied).length > 0
+
   useEffect(() => {
-    void loadAccountsAndMeta()
-  }, [loadAccountsAndMeta])
+    let cancelled = false
+    void (async () => {
+      setLoading(true)
+      setErr(null)
+      try {
+        const plist = await loadAccountsCore()
+        if (cancelled) return
+        await dispatch(fetchAccountsPaymentContext(plist)).unwrap()
+      } catch (e) {
+        if (!cancelled) {
+          const msg =
+            typeof e === 'string'
+              ? e
+              : e instanceof Error
+                ? e.message
+                : 'Failed to load accounts.'
+          setErr(msg)
+          setAccounts([])
+          setBalances({})
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+      dispatch(clearAccountsPage())
+    }
+  }, [dispatch, loadAccountsCore])
 
   useEffect(() => {
     if (!selectedAccountId) {
       setTransactions([])
       return
     }
-    void loadTransactions(selectedAccountId)
-  }, [selectedAccountId, loadTransactions])
+    const hasFilters = Object.keys(txFilterApplied).length > 0
+    void loadTransactions(selectedAccountId, hasFilters ? txFilterApplied : undefined)
+  }, [selectedAccountId, loadTransactions, txFilterApplied])
 
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId)
   const deleteAccountNameOk =
@@ -186,6 +281,16 @@ export function AccountsPage() {
     projects.forEach((p) => m.set(p.id, p.name))
     return m
   }, [projects])
+
+  const vendorName = useMemo(
+    () => new Map<string, string>(Object.entries(vendorByIdRecord)),
+    [vendorByIdRecord],
+  )
+  const invoiceById = useMemo(() => {
+    const m = new Map<string, Invoice>()
+    Object.entries(invoiceByIdRecord).forEach(([id, inv]) => m.set(id, inv))
+    return m
+  }, [invoiceByIdRecord])
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -247,7 +352,7 @@ export function AccountsPage() {
                     try {
                       await api.deleteAccount(deleteAccountTarget.id)
                       if (selectedAccountId === deleteAccountTarget.id) setSelectedAccountId(null)
-                      await loadAccountsAndMeta()
+                      await refreshAccountsData()
                       setDeleteAccountOpen(false)
                       setDeleteAccountTarget(null)
                       setDeleteAccountNameInput('')
@@ -325,8 +430,14 @@ export function AccountsPage() {
                   void (async () => {
                     try {
                       await api.deleteAccountTransaction(deleteTransactionTarget.id, selectedAccount.id)
-                      await loadAccountsAndMeta()
-                      await loadTransactions(selectedAccount.id)
+                      await refreshAccountsData()
+                      {
+                        const hasFilters = Object.keys(txFilterApplied).length > 0
+                        await loadTransactions(
+                          selectedAccount.id,
+                          hasFilters ? txFilterApplied : undefined,
+                        )
+                      }
                       setDeleteTransactionOpen(false)
                       setDeleteTransactionTarget(null)
                       setDeleteTransactionAmountInput('')
@@ -389,19 +500,24 @@ export function AccountsPage() {
               <table className="min-w-full text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
                   <tr>
+                    <th className={tableActionsFirstColClass}>
+                      <span className="sr-only">Actions</span>
+                    </th>
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">Location</th>
                     <th className="px-4 py-3">Type</th>
                     <th className="px-4 py-3">Project tag</th>
                     <th className="px-4 py-3">Currency</th>
                     <th className="px-4 py-3">Balance</th>
-                    <th className="px-4 py-3" />
+                    <th className={tableActionsLastColClass}>
+                      <span className="sr-only">Remove</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {accounts.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                      <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                         No accounts yet. Use Add account to create one.
                       </td>
                     </tr>
@@ -413,20 +529,14 @@ export function AccountsPage() {
                           'cursor-pointer border-b border-slate-100',
                           selectedAccountId === a.id ? 'bg-teal-50' : 'hover:bg-slate-50',
                         ].join(' ')}
-                        onClick={() => setSelectedAccountId(a.id)}
+                        onClick={() => {
+                          setTxFilterDraft(emptyTxFilterDraft())
+                          setTxFilterApplied({})
+                          setSelectedAccountId(a.id)
+                        }}
                       >
-                        <td className="px-4 py-3 font-medium text-slate-900">{a.name}</td>
-                        <td className="px-4 py-3 text-slate-600">{a.accountLocation ?? '—'}</td>
-                        <td className="px-4 py-3 capitalize text-slate-600">{a.kind}</td>
-                        <td className="px-4 py-3 text-slate-600">
-                          {a.projectId ? projectNameById.get(a.projectId) ?? '—' : '—'}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">{a.currency}</td>
-                        <td className="px-4 py-3 font-mono text-slate-800">
-                          {formatMoney(balances[a.id] ?? 0, a.currency)}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex justify-end gap-1">
+                        <td className={tableActionsFirstColClass} onClick={(e) => e.stopPropagation()}>
+                          <div className="flex w-[2.75rem] shrink-0 flex-nowrap justify-start">
                             <button
                               type="button"
                               className={iconBtnClass('neutral')}
@@ -439,6 +549,20 @@ export function AccountsPage() {
                             >
                               <PencilIcon className="h-4 w-4" />
                             </button>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-900">{a.name}</td>
+                        <td className="px-4 py-3 text-slate-600">{a.accountLocation ?? '—'}</td>
+                        <td className="px-4 py-3 capitalize text-slate-600">{a.kind}</td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {a.projectId ? projectNameById.get(a.projectId) ?? '—' : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">{a.currency}</td>
+                        <td className="px-4 py-3 font-mono text-slate-800">
+                          {formatMoney(balances[a.id] ?? 0, a.currency)}
+                        </td>
+                        <td className={tableActionsLastColClass} onClick={(e) => e.stopPropagation()}>
+                          <div className="flex w-[2.75rem] shrink-0 flex-nowrap justify-center">
                             <button
                               type="button"
                               className={iconBtnClass('danger')}
@@ -472,43 +596,226 @@ export function AccountsPage() {
                 <h2 className="text-lg font-medium text-slate-900">
                   Transactions — {selectedAccount.name}
                 </h2>
-                <button
-                  type="button"
-                  className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
-                  onClick={() => {
-                    setEditingTransaction(null)
-                    setShowTransactionPanel(true)
-                  }}
-                >
-                  Add transaction
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    aria-expanded={txFiltersVisible}
+                    aria-controls="account-tx-filters-panel"
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+                    onClick={() => {
+                      setTxFiltersVisible((prev) => {
+                        if (prev) return false
+                        setTxFilterDraft({
+                          occurredOnFrom: txFilterApplied.occurredOnFrom ?? '',
+                          occurredOnTo: txFilterApplied.occurredOnTo ?? '',
+                          projectId: txFilterApplied.projectId ?? '',
+                          descriptionContains: txFilterApplied.descriptionContains ?? '',
+                          bankMemoContains: txFilterApplied.bankMemoContains ?? '',
+                          transactionCategoryContains:
+                            txFilterApplied.transactionCategoryContains ?? '',
+                        })
+                        return true
+                      })
+                    }}
+                  >
+                    {txFiltersVisible ? 'Hide filters' : 'Show filters'}
+                    {hasActiveTransactionFilters && !txFiltersVisible ? (
+                      <span className="rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800">
+                        Active
+                      </span>
+                    ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+                    onClick={() => {
+                      setEditingTransaction(null)
+                      setCopyTemplateTransaction(null)
+                      setTxPanelSeq((s) => s + 1)
+                      setShowTransactionPanel(true)
+                    }}
+                  >
+                    Add transaction
+                  </button>
+                </div>
               </div>
 
-              <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200">
+              {txFiltersVisible ? (
+                <div
+                  id="account-tx-filters-panel"
+                  className="mt-4 rounded-lg border border-slate-200 bg-slate-50/50 p-4"
+                >
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Filter transactions
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                  <label className="block text-xs text-slate-600 sm:col-span-2 lg:col-span-1">
+                    <span className="font-medium">Project</span>
+                    <select
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      value={txFilterDraft.projectId}
+                      onChange={(e) =>
+                        setTxFilterDraft((d) => ({ ...d, projectId: e.target.value }))
+                      }
+                    >
+                      <option value="">All projects</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-xs text-slate-600">
+                    <span className="font-medium">Date from</span>
+                    <input
+                      type="date"
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      value={txFilterDraft.occurredOnFrom}
+                      onChange={(e) =>
+                        setTxFilterDraft((d) => ({ ...d, occurredOnFrom: e.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className="block text-xs text-slate-600">
+                    <span className="font-medium">Date to</span>
+                    <input
+                      type="date"
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      value={txFilterDraft.occurredOnTo}
+                      onChange={(e) =>
+                        setTxFilterDraft((d) => ({ ...d, occurredOnTo: e.target.value }))
+                      }
+                    />
+                  </label>
+                  <label className="block text-xs text-slate-600 sm:col-span-2 lg:col-span-1">
+                    <span className="font-medium">Description contains</span>
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      value={txFilterDraft.descriptionContains}
+                      onChange={(e) =>
+                        setTxFilterDraft((d) => ({ ...d, descriptionContains: e.target.value }))
+                      }
+                      placeholder="Text in description"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label className="block text-xs text-slate-600 sm:col-span-2 lg:col-span-1">
+                    <span className="font-medium">Bank memo contains</span>
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      value={txFilterDraft.bankMemoContains}
+                      onChange={(e) =>
+                        setTxFilterDraft((d) => ({ ...d, bankMemoContains: e.target.value }))
+                      }
+                      placeholder="Text in memo"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label className="block text-xs text-slate-600 sm:col-span-2 lg:col-span-1">
+                    <span className="font-medium">Category contains</span>
+                    <input
+                      type="text"
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      value={txFilterDraft.transactionCategoryContains}
+                      onChange={(e) =>
+                        setTxFilterDraft((d) => ({ ...d, transactionCategoryContains: e.target.value }))
+                      }
+                      placeholder="Category"
+                      autoComplete="off"
+                    />
+                  </label>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
+                    onClick={applyTransactionFilters}
+                  >
+                    Apply filters
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    onClick={clearTransactionFilters}
+                  >
+                    Clear filters
+                  </button>
+                </div>
+                </div>
+              ) : null}
+
+              <div className="mt-4 max-h-[min(28rem,calc(100vh-14rem))] overflow-auto rounded-lg border border-slate-200">
                 <table className="min-w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                  <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500 shadow-sm [&_th]:bg-slate-50">
                     <tr>
-                      <th className="px-3 py-2">Date</th>
-                      <th className="px-3 py-2">Entry</th>
-                      <th className="px-3 py-2">Amount</th>
-                      <th className="px-3 py-2">Running balance</th>
-                      <th className="px-3 py-2">Project</th>
-                      <th className="px-3 py-2">Description</th>
-                      <th className="px-3 py-2">Payment</th>
-                      <th className="px-3 py-2" />
+                      <th className={`${txTableActionsFirstColClass} bg-slate-50`}>
+                        <span className="sr-only">Actions</span>
+                      </th>
+                      <th className="whitespace-nowrap px-3 py-2">Date</th>
+                      <th className="whitespace-nowrap px-3 py-2">Entry</th>
+                      <th className="whitespace-nowrap px-3 py-2">Amount</th>
+                      <th className="whitespace-nowrap px-3 py-2">Running balance</th>
+                      <th className="whitespace-nowrap px-3 py-2">Project</th>
+                      <th className="whitespace-nowrap px-3 py-2">Plots</th>
+                      <th className="whitespace-nowrap px-3 py-2">Description</th>
+                      <th className="whitespace-nowrap px-3 py-2">Bank memo</th>
+                      <th className="whitespace-nowrap px-3 py-2">Category</th>
+                      <th className="whitespace-nowrap px-3 py-2">Payment</th>
+                      <th className={`${tableActionsLastColClass} bg-slate-50`}>
+                        <span className="sr-only">Remove</span>
+                      </th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-100">
                     {transactions.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
-                          No transactions yet.
+                        <td colSpan={12} className="bg-white px-3 py-6 text-center text-slate-500">
+                          {hasActiveTransactionFilters
+                            ? 'No transactions match these filters.'
+                            : 'No transactions yet.'}
                         </td>
                       </tr>
                     ) : (
                       transactions.map((t) => (
-                        <tr key={t.id} className="border-t border-slate-100">
-                          <td className="px-3 py-2">{formatDate(t.occurredOn)}</td>
+                        <tr
+                          key={t.id}
+                          className="odd:bg-white even:bg-slate-50/90 hover:bg-teal-50/40"
+                        >
+                          <td className={txTableActionsFirstColClass}>
+                            <div className="flex w-[5.5rem] shrink-0 flex-nowrap items-center gap-2">
+                              <button
+                                type="button"
+                                className={iconBtnClass('neutral')}
+                                aria-label="Edit transaction"
+                                onClick={() => {
+                                  setCopyTemplateTransaction(null)
+                                  setEditingTransaction(t)
+                                  setTxPanelSeq((s) => s + 1)
+                                  setShowTransactionPanel(true)
+                                }}
+                              >
+                                <PencilIcon className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                className={iconBtnClass('neutral')}
+                                aria-label="Copy transaction to new line"
+                                title="Copy to new transaction"
+                                onClick={() => {
+                                  setEditingTransaction(null)
+                                  setCopyTemplateTransaction(t)
+                                  setTxPanelSeq((s) => s + 1)
+                                  setShowTransactionPanel(true)
+                                }}
+                              >
+                                <CopyIcon className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2">{formatDate(t.occurredOn)}</td>
                           <td
                             className={[
                               'px-3 py-2 capitalize',
@@ -533,7 +840,22 @@ export function AccountsPage() {
                           <td className="px-3 py-2 text-xs text-slate-600">
                             {t.projectId ? projectNameById.get(t.projectId) ?? '—' : '—'}
                           </td>
+                          <td
+                            className="max-w-[14rem] px-3 py-2 text-xs text-slate-600"
+                            title={t.plotNumberLabels ?? undefined}
+                          >
+                            {t.plotNumberLabels ?? '—'}
+                          </td>
                           <td className="px-3 py-2 text-slate-600">{t.description ?? '—'}</td>
+                          <td
+                            className="max-w-[12rem] truncate px-3 py-2 text-xs text-slate-600"
+                            title={t.bankMemo ?? undefined}
+                          >
+                            {t.bankMemo ?? '—'}
+                          </td>
+                          <td className="max-w-[10rem] truncate px-3 py-2 text-xs text-slate-600" title={t.transactionCategory ?? undefined}>
+                            {t.transactionCategory ?? '—'}
+                          </td>
                           <td className="px-3 py-2 text-xs text-slate-600">
                             {t.paymentId ? (
                               <span className="font-mono" title={t.paymentId}>
@@ -543,19 +865,8 @@ export function AccountsPage() {
                               '—'
                             )}
                           </td>
-                          <td className="px-3 py-2 text-right">
-                            <div className="flex flex-wrap justify-end gap-2">
-                              <button
-                                type="button"
-                                className={iconBtnClass('neutral')}
-                                aria-label="Edit transaction"
-                                onClick={() => {
-                                  setEditingTransaction(t)
-                                  setShowTransactionPanel(true)
-                                }}
-                              >
-                                <PencilIcon className="h-4 w-4" />
-                              </button>
+                          <td className={tableActionsLastColClass}>
+                            <div className="flex w-[2.75rem] shrink-0 flex-nowrap justify-center">
                               <button
                                 type="button"
                                 className={iconBtnClass('danger')}
@@ -592,7 +903,7 @@ export function AccountsPage() {
                 setShowAddAccountPanel(false)
                 setEditingAccount(null)
               }}
-              onRefresh={loadAccountsAndMeta}
+              onRefresh={refreshAccountsData}
               onError={setErr}
               className="h-full overflow-y-auto rounded-none border-y-0 border-r-0 p-6 shadow-xl"
             />
@@ -604,20 +915,28 @@ export function AccountsPage() {
         <div className="fixed inset-0 z-50 bg-slate-900/40" aria-hidden="true">
           <div className="absolute inset-y-0 right-0 w-full max-w-xl">
             <TransactionFormPanel
-              key={editingTransaction?.id ?? 'new'}
+              key={`${editingTransaction?.id ?? 'new'}-${copyTemplateTransaction?.id ?? ''}-${txPanelSeq}`}
               account={selectedAccount}
               projects={projects}
               paymentOptions={paymentOptions}
               vendorName={vendorName}
               invoiceById={invoiceById}
               editingTransaction={editingTransaction}
+              templateForNewTransaction={copyTemplateTransaction}
               onClose={() => {
                 setShowTransactionPanel(false)
                 setEditingTransaction(null)
+                setCopyTemplateTransaction(null)
               }}
               onSaved={async () => {
-                await loadAccountsAndMeta()
-                if (selectedAccountId) await loadTransactions(selectedAccountId)
+                await refreshAccountsData()
+                if (selectedAccountId) {
+                  const hasFilters = Object.keys(txFilterApplied).length > 0
+                  await loadTransactions(
+                    selectedAccountId,
+                    hasFilters ? txFilterApplied : undefined,
+                  )
+                }
               }}
               onError={setErr}
               className="h-full overflow-y-auto rounded-none border-y-0 border-r-0 p-6 shadow-xl"

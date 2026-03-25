@@ -98,6 +98,9 @@ export function PhasesTab({
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
+              <th className="w-14 min-w-[3.5rem] max-w-[3.5rem] whitespace-nowrap px-2 py-3" scope="col">
+                <span className="sr-only">Edit</span>
+              </th>
               <th className="w-px whitespace-nowrap px-2 py-3" scope="col">
                 Order
               </th>
@@ -105,13 +108,15 @@ export function PhasesTab({
               <th className="px-4 py-3">Start</th>
               <th className="px-4 py-3">End</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3" />
+              <th className="w-14 min-w-[3.5rem] max-w-[3.5rem] whitespace-nowrap px-2 py-3">
+                <span className="sr-only">Remove</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {phases.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                   No phases yet.
                 </td>
               </tr>
@@ -186,8 +191,18 @@ function PhaseRow({
 
   return (
     <tr className="border-b border-slate-100">
+      <td className="w-14 min-w-[3.5rem] max-w-[3.5rem] whitespace-nowrap px-2 py-3 align-middle">
+        <button
+          type="button"
+          disabled={actionsDisabled}
+          className="text-xs text-teal-700 hover:underline disabled:opacity-40"
+          onClick={() => onEdit(phase)}
+        >
+          Edit
+        </button>
+      </td>
       <td className="px-2 py-2 align-middle">
-        <div className="flex flex-col gap-0.5">
+        <div className="flex w-[2.25rem] shrink-0 flex-col flex-nowrap gap-0.5">
           <button
             type="button"
             title="Move up"
@@ -247,35 +262,25 @@ function PhaseRow({
           ))}
         </select>
       </td>
-      <td className="px-4 py-3 text-right">
-        <div className="flex items-center justify-end gap-4">
-          <button
-            type="button"
-            disabled={actionsDisabled}
-            className="text-xs text-teal-700 hover:underline disabled:opacity-40"
-            onClick={() => onEdit(phase)}
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            disabled={reordering || actionsDisabled}
-            className="text-xs text-red-600 hover:underline disabled:opacity-40"
-            onClick={() => {
-              if (!confirm('Delete this phase?')) return
-              void (async () => {
-                try {
-                  await api.deletePhase(phase.id, projectId)
-                  await onRefresh()
-                } catch (err) {
-                  onError(err instanceof Error ? err.message : 'Delete failed.')
-                }
-              })()
-            }}
-          >
-            Remove
-          </button>
-        </div>
+      <td className="w-14 min-w-[3.5rem] max-w-[3.5rem] whitespace-nowrap px-2 py-3 align-middle">
+        <button
+          type="button"
+          disabled={reordering || actionsDisabled}
+          className="text-xs text-red-600 hover:underline disabled:opacity-40"
+          onClick={() => {
+            if (!confirm('Delete this phase?')) return
+            void (async () => {
+              try {
+                await api.deletePhase(phase.id, projectId)
+                await onRefresh()
+              } catch (err) {
+                onError(err instanceof Error ? err.message : 'Delete failed.')
+              }
+            })()
+          }}
+        >
+          Remove
+        </button>
       </td>
     </tr>
   )

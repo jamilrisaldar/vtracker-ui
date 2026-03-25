@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as api from '../api/dataApi'
-import type { Account, AccountTransaction, Invoice, LandPlot, Payment, Project } from '../types'
+import type {
+  Account,
+  AccountTransaction,
+  Invoice,
+  LandPlot,
+  Project,
+  TransactionPaymentOption,
+} from '../types'
 import { formatDate, formatMoney } from '../utils/format'
 
-export type TransactionPaymentOption = {
-  payment: Payment
-  projectId: string
-  projectName: string
-}
+export type { TransactionPaymentOption }
 
 export function TransactionFormPanel({
   account,
@@ -16,6 +19,8 @@ export function TransactionFormPanel({
   vendorName,
   invoiceById,
   editingTransaction,
+  /** When set with `editingTransaction` null, prefill a new line from this row; create only after user edits. */
+  templateForNewTransaction,
   onClose,
   onSaved,
   onError,
@@ -27,12 +32,14 @@ export function TransactionFormPanel({
   vendorName: Map<string, string>
   invoiceById: Map<string, Invoice>
   editingTransaction: AccountTransaction | null
+  templateForNewTransaction?: AccountTransaction | null
   onClose: () => void
   onSaved: () => Promise<void>
   onError: (msg: string | null) => void
   className?: string
 }) {
   const isEdit = editingTransaction != null
+  const isCopyNew = !isEdit && templateForNewTransaction != null
   const [amount, setAmount] = useState('')
   const [entryType, setEntryType] = useState<'debit' | 'credit'>('debit')
   const [occurredOn, setOccurredOn] = useState(() => new Date().toISOString().slice(0, 10))
@@ -46,9 +53,12 @@ export function TransactionFormPanel({
   const [plotLoading, setPlotLoading] = useState(false)
   const [categoryOptions, setCategoryOptions] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
+  /** Copy-from-row: user must change something before create is allowed. */
+  const [copyUserEdited, setCopyUserEdited] = useState(false)
   const hydratingEditRef = useRef(false)
 
   useEffect(() => {
+    setCopyUserEdited(false)
     if (editingTransaction) {
       hydratingEditRef.current = true
       setAmount(String(editingTransaction.amount))
@@ -60,6 +70,18 @@ export function TransactionFormPanel({
       setPaymentId(editingTransaction.paymentId ?? '')
       setProjectId(editingTransaction.paymentId ? '' : (editingTransaction.projectId ?? ''))
       setPlotIds(editingTransaction.plotIds ?? [])
+    } else if (templateForNewTransaction) {
+      const t = templateForNewTransaction
+      hydratingEditRef.current = true
+      setAmount(String(t.amount))
+      setEntryType(t.entryType)
+      setOccurredOn(t.occurredOn.slice(0, 10))
+      setDescription(t.description ?? '')
+      setBankMemo(t.bankMemo ?? '')
+      setTransactionCategory(t.transactionCategory ?? '')
+      setPaymentId(t.paymentId ?? '')
+      setProjectId(t.paymentId ? '' : (t.projectId ?? ''))
+      setPlotIds(t.plotIds ?? [])
     } else {
       hydratingEditRef.current = false
       setAmount('')
@@ -72,7 +94,7 @@ export function TransactionFormPanel({
       setProjectId('')
       setPlotIds([])
     }
-  }, [editingTransaction])
+  }, [editingTransaction, templateForNewTransaction])
 
   useEffect(() => {
     let cancelled = false
@@ -147,16 +169,26 @@ export function TransactionFormPanel({
         .join(' ')}
     >
       <h2 className="text-lg font-medium text-slate-900">
-        {isEdit ? 'Edit transaction' : 'Add transaction'}
+        {isEdit ? 'Edit transaction' : isCopyNew ? 'Copy transaction' : 'Add transaction'}
       </h2>
       <p className="mt-1 text-sm text-slate-600">
         {account.name} · {account.currency}
       </p>
+      {isCopyNew ? (
+        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          This is a new line prefilled from the selected row. Change any field, then save — nothing is
+          created until you save.
+        </p>
+      ) : null}
       <form
         className="mt-4 grid gap-4 sm:grid-cols-2"
+        onChange={() => {
+          if (isCopyNew) setCopyUserEdited(true)
+        }}
         onSubmit={async (e) => {
           e.preventDefault()
           if (!amount.trim()) return
+          if (isCopyNew && !copyUserEdited) return
           onError(null)
           setSaving(true)
           try {
@@ -335,10 +367,21 @@ export function TransactionFormPanel({
         <div className="flex flex-wrap gap-2 sm:col-span-2">
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || (isCopyNew && !copyUserEdited)}
+            title={
+              isCopyNew && !copyUserEdited
+                ? 'Change at least one field to create this transaction'
+                : undefined
+            }
             className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
           >
-            {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Add transaction'}
+            {saving
+              ? 'Saving…'
+              : isEdit
+                ? 'Save changes'
+                : isCopyNew
+                  ? 'Create transaction'
+                  : 'Add transaction'}
           </button>
           <button
             type="button"
