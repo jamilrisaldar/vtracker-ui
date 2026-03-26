@@ -3,6 +3,8 @@
  */
 import type {
   Account,
+  AccountFixedDeposit,
+  AccountFixedDepositStatus,
   AccountTransaction,
   AccountTransactionListFilters,
   DocumentKind,
@@ -66,10 +68,12 @@ export async function listPhases(projectId: string): Promise<Phase[]> {
 export async function createPhase(input: {
   projectId: string
   name: string
-  description?: string
+  notes?: string
   startDate: string
   endDate: string
   status?: PhaseStatus
+  estimatedTotal?: number
+  actualSpend?: number
 }): Promise<Phase> {
   if (isBackendAuthEnabled()) return backend.createPhase(input)
   return mock.createPhase(input)
@@ -77,17 +81,16 @@ export async function createPhase(input: {
 
 export async function updatePhase(
   phaseId: string,
-  patch: Partial<
-    Pick<
-      Phase,
-      | 'name'
-      | 'description'
-      | 'startDate'
-      | 'endDate'
-      | 'status'
-      | 'displayOrder'
-    >
-  >,
+  patch: Partial<{
+    name: string
+    notes: string | null
+    startDate: string
+    endDate: string
+    status: PhaseStatus
+    displayOrder: number
+    estimatedTotal: number | null
+    actualSpend: number | null
+  }>,
   projectId?: string,
 ): Promise<Phase> {
   if (isBackendAuthEnabled()) {
@@ -392,6 +395,49 @@ export async function deleteAccountTransaction(
 ): Promise<void> {
   if (isBackendAuthEnabled()) return backend.deleteAccountTransaction(transactionId, accountId)
   return mock.deleteAccountTransaction(transactionId, accountId)
+}
+
+export async function listAccountFixedDeposits(accountId: string): Promise<AccountFixedDeposit[]> {
+  if (isBackendAuthEnabled()) return backend.listAccountFixedDeposits(accountId)
+  return mock.listAccountFixedDeposits(accountId)
+}
+
+export async function createAccountFixedDeposit(input: {
+  accountId: string
+  certificateNumber: string
+  effectiveDate: string
+  principalAmount: number
+  annualRatePercent: number
+  maturityValue: number
+  maturityDate: string
+  status?: AccountFixedDepositStatus
+  notes?: string
+}): Promise<AccountFixedDeposit> {
+  if (isBackendAuthEnabled()) return backend.createAccountFixedDeposit(input)
+  return mock.createAccountFixedDeposit(input)
+}
+
+export async function updateAccountFixedDeposit(
+  depositId: string,
+  accountId: string,
+  patch: Partial<{
+    certificateNumber: string
+    effectiveDate: string
+    principalAmount: number
+    annualRatePercent: number
+    maturityValue: number
+    maturityDate: string
+    status: AccountFixedDepositStatus
+    notes: string | null
+  }>,
+): Promise<AccountFixedDeposit> {
+  if (isBackendAuthEnabled()) return backend.updateAccountFixedDeposit(depositId, accountId, patch)
+  return mock.updateAccountFixedDeposit(depositId, accountId, patch)
+}
+
+export async function deleteAccountFixedDeposit(depositId: string, accountId: string): Promise<void> {
+  if (isBackendAuthEnabled()) return backend.deleteAccountFixedDeposit(depositId, accountId)
+  return mock.deleteAccountFixedDeposit(depositId, accountId)
 }
 
 export async function listDocuments(projectId: string): Promise<ProjectDocument[]> {

@@ -1,5 +1,7 @@
 import type {
   Account,
+  AccountFixedDeposit,
+  AccountFixedDepositStatus,
   AccountTransaction,
   AccountTransactionListFilters,
   AuthSession,
@@ -19,6 +21,7 @@ import type {
   Vendor,
 } from '../types'
 import { isBackendAuthEnabled } from '../config'
+import { enrichAccountFixedDeposit } from '../utils/fixedDepositMetrics'
 import { plotCalculatedSqFtFromDimensions } from '../utils/landPlotDisplay'
 import {
   clearAuthSession,
@@ -272,10 +275,12 @@ export async function listPhases(projectId: string): Promise<Phase[]> {
 export async function createPhase(input: {
   projectId: string
   name: string
-  description?: string
+  notes?: string
   startDate: string
   endDate: string
   status?: PhaseStatus
+  estimatedTotal?: number
+  actualSpend?: number
 }): Promise<Phase> {
   await delay()
   const project = await getProject(input.projectId)
@@ -290,7 +295,9 @@ export async function createPhase(input: {
     id: id('phase'),
     projectId: input.projectId,
     name: input.name.trim(),
-    description: input.description?.trim() || undefined,
+    notes: input.notes?.trim() || undefined,
+    estimatedTotal: input.estimatedTotal,
+    actualSpend: input.actualSpend,
     startDate: input.startDate,
     endDate: input.endDate,
     status: input.status ?? 'not_started',
@@ -304,17 +311,16 @@ export async function createPhase(input: {
 
 export async function updatePhase(
   phaseId: string,
-  patch: Partial<
-    Pick<
-      Phase,
-      | 'name'
-      | 'description'
-      | 'startDate'
-      | 'endDate'
-      | 'status'
-      | 'displayOrder'
-    >
-  >,
+  patch: Partial<{
+    name: string
+    notes: string | null
+    startDate: string
+    endDate: string
+    status: PhaseStatus
+    displayOrder: number
+    estimatedTotal: number | null
+    actualSpend: number | null
+  }>,
   _projectId?: string,
 ): Promise<Phase> {
   await delay()
@@ -326,8 +332,9 @@ export async function updatePhase(
   const proj = db.projects.find((p) => p.id === ph.projectId)
   if (!proj || proj.userId !== userId) throw new Error('Not found')
   if (patch.name != null) ph.name = patch.name.trim()
-  if (patch.description !== undefined)
-    ph.description = patch.description?.trim() || undefined
+  if (patch.notes !== undefined) ph.notes = patch.notes?.trim() || undefined
+  if (patch.estimatedTotal !== undefined) ph.estimatedTotal = patch.estimatedTotal ?? undefined
+  if (patch.actualSpend !== undefined) ph.actualSpend = patch.actualSpend ?? undefined
   if (patch.startDate != null) ph.startDate = patch.startDate
   if (patch.endDate != null) ph.endDate = patch.endDate
   if (patch.status != null) ph.status = patch.status
@@ -868,10 +875,124 @@ export async function deleteAccount(accountId: string): Promise<void> {
   if (!acc) throw new Error('Not found')
   db.accounts = db.accounts.filter((x) => x.id !== accountId)
   db.accountTransactions = db.accountTransactions.filter((t) => t.accountId !== accountId)
+  db.accountFixedDeposits = db.accountFixedDeposits.filter((d) => d.accountId !== accountId)
   if (acc.projectId) {
     const proj = db.projects.find((p) => p.id === acc.projectId)
     if (proj) proj.updatedAt = nowIso()
   }
+  saveDb(db)
+}
+
+// —— Account fixed deposits / investment certificates ——
+
+export async function listAccountFixedDeposits(accountId: string): Promise<AccountFixedDeposit[]> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  if (!db.accounts.some((a) => a.id === accountId)) throw new Error('Not found')
+  return db.accountFixedDeposits
+    .filter((d) => d.accountId === accountId)
+    .sort(
+      (a, b) =>
+        b.effectiveDate.localeCompare(a.effectiveDate) ||
+        a.certificateNumber.localeCompare(b.certificateNumber),
+    )
+    .map((row) => enrichAccountFixedDeposit(row))
+}
+
+export async function createAccountFixedDeposit(input: {
+  accountId: string
+  certificateNumber: string
+  effectiveDate: string
+  principalAmount: number
+  annualRatePercent: number
+  maturityValue: number
+  maturityDate: string
+  status?: AccountFixedDepositStatus
+  notes?: string
+}): Promise<AccountFixedDeposit> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  if (!db.accounts.some((a) => a.id === input.accountId)) throw new Error('Not found')
+  const cn = input.certificateNumber.trim()
+  if (db.accountFixedDeposits.some((d) => d.accountId === input.accountId && d.certificateNumber === cn)) {
+    throw new Error('Certificate number already exists for this account')
+  }
+  if (input.maturityDate < input.effectiveDate) throw new Error('Maturity must be on or after effective date')
+  const now = nowIso()
+  const row = {
+    id: id('fd'),
+    accountId: input.accountId,
+    certificateNumber: cn,
+    effectiveDate: input.effectiveDate.slice(0, 10),
+    principalAmount: input.principalAmount,
+    annualRatePercent: input.annualRatePercent,
+    maturityValue: input.maturityValue,
+    maturityDate: input.maturityDate.slice(0, 10),
+    status: input.status ?? 'active',
+    notes: input.notes?.trim() || undefined,
+    createdAt: now,
+    updatedAt: now,
+  }
+  db.accountFixedDeposits.push(row)
+  saveDb(db)
+  return enrichAccountFixedDeposit(row)
+}
+
+export async function updateAccountFixedDeposit(
+  depositId: string,
+  accountId: string,
+  patch: Partial<{
+    certificateNumber: string
+    effectiveDate: string
+    principalAmount: number
+    annualRatePercent: number
+    maturityValue: number
+    maturityDate: string
+    status: AccountFixedDepositStatus
+    notes: string | null
+  }>,
+): Promise<AccountFixedDeposit> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const idx = db.accountFixedDeposits.findIndex((d) => d.id === depositId && d.accountId === accountId)
+  if (idx < 0) throw new Error('Not found')
+  const cur = db.accountFixedDeposits[idx]
+  const next = { ...cur, updatedAt: nowIso() }
+  if (patch.certificateNumber !== undefined) {
+    const n = patch.certificateNumber.trim()
+    if (
+      n !== cur.certificateNumber &&
+      db.accountFixedDeposits.some((d) => d.accountId === accountId && d.certificateNumber === n)
+    ) {
+      throw new Error('Certificate number already exists for this account')
+    }
+    next.certificateNumber = n
+  }
+  if (patch.effectiveDate !== undefined) next.effectiveDate = patch.effectiveDate.slice(0, 10)
+  if (patch.principalAmount !== undefined) next.principalAmount = patch.principalAmount
+  if (patch.annualRatePercent !== undefined) next.annualRatePercent = patch.annualRatePercent
+  if (patch.maturityValue !== undefined) next.maturityValue = patch.maturityValue
+  if (patch.maturityDate !== undefined) next.maturityDate = patch.maturityDate.slice(0, 10)
+  if (patch.status !== undefined) next.status = patch.status
+  if (patch.notes !== undefined) next.notes = patch.notes?.trim() || undefined
+  if (next.maturityDate < next.effectiveDate) throw new Error('Maturity must be on or after effective date')
+  db.accountFixedDeposits[idx] = next
+  saveDb(db)
+  return enrichAccountFixedDeposit(next)
+}
+
+export async function deleteAccountFixedDeposit(depositId: string, accountId: string): Promise<void> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const before = db.accountFixedDeposits.length
+  db.accountFixedDeposits = db.accountFixedDeposits.filter(
+    (d) => !(d.id === depositId && d.accountId === accountId),
+  )
+  if (db.accountFixedDeposits.length === before) throw new Error('Not found')
   saveDb(db)
 }
 

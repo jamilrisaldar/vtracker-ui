@@ -1,5 +1,6 @@
 import type {
   Account,
+  AccountFixedDeposit,
   AccountTransaction,
   Invoice,
   LandPlot,
@@ -25,6 +26,8 @@ export interface MockDatabase {
   payments: Payment[]
   accounts: Account[]
   accountTransactions: AccountTransaction[]
+  /** Persisted without computed interest fields; enriched on read. */
+  accountFixedDeposits: Omit<AccountFixedDeposit, 'dailyInterest' | 'daysElapsed' | 'accruedInterest'>[]
   documents: ProjectDocument[]
   /** Maps session token → user id */
   tokens: Record<string, string>
@@ -41,19 +44,37 @@ function emptyDb(): MockDatabase {
     payments: [],
     accounts: [],
     accountTransactions: [],
+    accountFixedDeposits: [],
     documents: [],
     tokens: {},
   }
 }
 
-function migratePhase(p: Phase & { order?: number }): Phase {
+function migratePhase(p: Phase & { order?: number; description?: string }): Phase {
   const displayOrder =
     typeof p.displayOrder === 'number'
       ? p.displayOrder
       : typeof p.order === 'number'
         ? p.order
         : 0
-  return { ...p, displayOrder }
+  const legacyDesc = p.description
+  const notes =
+    p.notes ??
+    (legacyDesc != null && String(legacyDesc).trim() !== ''
+      ? String(legacyDesc)
+      : undefined)
+  return {
+    id: p.id,
+    projectId: p.projectId,
+    name: p.name,
+    notes,
+    estimatedTotal: p.estimatedTotal,
+    actualSpend: p.actualSpend,
+    startDate: p.startDate,
+    endDate: p.endDate,
+    status: p.status,
+    displayOrder,
+  }
 }
 
 export function loadDb(): MockDatabase {
@@ -61,7 +82,7 @@ export function loadDb(): MockDatabase {
     const raw = localStorage.getItem(DB_KEY)
     if (!raw) return emptyDb()
     const parsed = JSON.parse(raw) as MockDatabase & {
-      phases?: (Phase & { order?: number })[]
+      phases?: (Phase & { order?: number; description?: string })[]
     }
     const migratedAccounts = (parsed.accounts ?? []).map((a) => {
       const ac = a as Account & { userId?: string }
@@ -74,6 +95,7 @@ export function loadDb(): MockDatabase {
       tokens: parsed.tokens ?? {},
       accounts: migratedAccounts,
       accountTransactions: parsed.accountTransactions ?? [],
+      accountFixedDeposits: parsed.accountFixedDeposits ?? [],
       phases: (parsed.phases ?? []).map(migratePhase),
       plots: (parsed.plots ?? []).map((p) => {
         const lp = p as LandPlot

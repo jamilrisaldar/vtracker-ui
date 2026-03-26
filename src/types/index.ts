@@ -35,7 +35,12 @@ export interface Phase {
   id: string
   projectId: string
   name: string
-  description?: string
+  /** Free-form notes (optional). */
+  notes?: string
+  /** Optional budget / total estimate. */
+  estimatedTotal?: number
+  /** Optional recorded spend. */
+  actualSpend?: number
   startDate: string
   endDate: string
   status: PhaseStatus
@@ -161,6 +166,27 @@ export interface AccountTransaction {
   occurredOn: string
   paymentId?: string
   createdAt: string
+}
+
+export type AccountFixedDepositStatus = 'active' | 'cashed'
+
+/** Fixed deposit / investment certificate; interest figures computed by API (365-day simple interest). */
+export interface AccountFixedDeposit {
+  id: string
+  accountId: string
+  certificateNumber: string
+  effectiveDate: string
+  principalAmount: number
+  annualRatePercent: number
+  maturityValue: number
+  maturityDate: string
+  status: AccountFixedDepositStatus
+  notes?: string
+  createdAt: string
+  updatedAt: string
+  dailyInterest: number
+  daysElapsed: number
+  accruedInterest: number
 }
 
 export interface ProjectDocument {

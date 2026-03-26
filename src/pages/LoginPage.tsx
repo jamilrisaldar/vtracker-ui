@@ -36,7 +36,7 @@ export function LoginPage() {
             Venture Tracker
           </p>
           <h1 className="mt-2 text-2xl font-semibold text-slate-900">
-            Hotel build projects
+            Projects and Finance Tracker
           </h1>
           <p className="mt-2 text-sm text-slate-600">
             {backend

@@ -4,6 +4,8 @@
  */
 import type {
   Account,
+  AccountFixedDeposit,
+  AccountFixedDepositStatus,
   AccountTransaction,
   AccountTransactionListFilters,
   DocumentKind,
@@ -58,7 +60,13 @@ function asNum(v: unknown, fallback = 0): number {
   return fallback
 }
 
-/** Normalize API phase JSON (legacy `order` → `displayOrder`). */
+function asOptionalNumber(v: unknown): number | undefined {
+  if (v == null) return undefined
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : undefined
+}
+
+/** Normalize API phase JSON (legacy `order` → `displayOrder`, `description` → `notes`). */
 function normalizePhase(raw: Record<string, unknown>): Phase {
   const displayOrder =
     typeof raw.displayOrder === 'number'
@@ -66,7 +74,19 @@ function normalizePhase(raw: Record<string, unknown>): Phase {
       : typeof raw.order === 'number'
         ? raw.order
         : 0
-  return { ...(raw as unknown as Phase), displayOrder }
+  const notesFromApi =
+    typeof raw.notes === 'string' && raw.notes.trim() !== ''
+      ? raw.notes
+      : typeof raw.description === 'string' && raw.description.trim() !== ''
+        ? raw.description
+        : undefined
+  return {
+    ...(raw as unknown as Phase),
+    displayOrder,
+    notes: notesFromApi,
+    estimatedTotal: asOptionalNumber(raw.estimatedTotal),
+    actualSpend: asOptionalNumber(raw.actualSpend),
+  }
 }
 
 // —— Projects ——
@@ -134,10 +154,12 @@ export async function listPhases(projectId: string): Promise<Phase[]> {
 export async function createPhase(input: {
   projectId: string
   name: string
-  description?: string
+  notes?: string
   startDate: string
   endDate: string
   status?: PhaseStatus
+  estimatedTotal?: number
+  actualSpend?: number
 }): Promise<Phase> {
   const created = await apiRequest<Record<string, unknown>>(
     `/api/v1/projects/${encodeURIComponent(input.projectId)}/phases`,
@@ -145,10 +167,12 @@ export async function createPhase(input: {
       method: 'POST',
       body: JSON.stringify({
         name: input.name.trim(),
-        description: input.description?.trim(),
+        notes: input.notes?.trim(),
         startDate: input.startDate,
         endDate: input.endDate,
         status: input.status,
+        estimatedTotal: input.estimatedTotal,
+        actualSpend: input.actualSpend,
       }),
     },
   )
@@ -157,26 +181,27 @@ export async function createPhase(input: {
 
 export async function updatePhase(
   phaseId: string,
-  patch: Partial<
-    Pick<
-      Phase,
-      | 'name'
-      | 'description'
-      | 'startDate'
-      | 'endDate'
-      | 'status'
-      | 'displayOrder'
-    >
-  >,
+  patch: Partial<{
+    name: string
+    notes: string | null
+    startDate: string
+    endDate: string
+    status: PhaseStatus
+    displayOrder: number
+    estimatedTotal: number | null
+    actualSpend: number | null
+  }>,
   projectId: string,
 ): Promise<Phase> {
   const body: Record<string, unknown> = {}
   if (patch.name != null) body.name = patch.name.trim()
-  if (patch.description !== undefined) body.description = patch.description?.trim()
+  if (patch.notes !== undefined) body.notes = patch.notes?.trim() ?? null
   if (patch.startDate != null) body.startDate = patch.startDate
   if (patch.endDate != null) body.endDate = patch.endDate
   if (patch.status != null) body.status = patch.status
   if (patch.displayOrder != null) body.displayOrder = patch.displayOrder
+  if (patch.estimatedTotal !== undefined) body.estimatedTotal = patch.estimatedTotal
+  if (patch.actualSpend !== undefined) body.actualSpend = patch.actualSpend
   const updated = await apiRequest<Record<string, unknown>>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/phases/${encodeURIComponent(phaseId)}`,
     { method: 'PATCH', body: JSON.stringify(body) },
@@ -631,6 +656,77 @@ export async function deleteAccountTransaction(
 ): Promise<void> {
   await apiRequest<void>(
     `/api/v1/accounts/${encodeURIComponent(accountId)}/transactions/${encodeURIComponent(transactionId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export async function listAccountFixedDeposits(accountId: string): Promise<AccountFixedDeposit[]> {
+  return apiRequest<AccountFixedDeposit[]>(
+    `/api/v1/accounts/${encodeURIComponent(accountId)}/fixed-deposits`,
+  )
+}
+
+export async function createAccountFixedDeposit(input: {
+  accountId: string
+  certificateNumber: string
+  effectiveDate: string
+  principalAmount: number
+  annualRatePercent: number
+  maturityValue: number
+  maturityDate: string
+  status?: AccountFixedDepositStatus
+  notes?: string
+}): Promise<AccountFixedDeposit> {
+  return apiRequest<AccountFixedDeposit>(
+    `/api/v1/accounts/${encodeURIComponent(input.accountId)}/fixed-deposits`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        certificateNumber: input.certificateNumber.trim(),
+        effectiveDate: input.effectiveDate,
+        principalAmount: input.principalAmount,
+        annualRatePercent: input.annualRatePercent,
+        maturityValue: input.maturityValue,
+        maturityDate: input.maturityDate,
+        status: input.status,
+        notes: input.notes?.trim(),
+      }),
+    },
+  )
+}
+
+export async function updateAccountFixedDeposit(
+  depositId: string,
+  accountId: string,
+  patch: Partial<{
+    certificateNumber: string
+    effectiveDate: string
+    principalAmount: number
+    annualRatePercent: number
+    maturityValue: number
+    maturityDate: string
+    status: AccountFixedDepositStatus
+    notes: string | null
+  }>,
+): Promise<AccountFixedDeposit> {
+  const body: Record<string, unknown> = {}
+  if (patch.certificateNumber != null) body.certificateNumber = patch.certificateNumber.trim()
+  if (patch.effectiveDate != null) body.effectiveDate = patch.effectiveDate
+  if (patch.principalAmount != null) body.principalAmount = patch.principalAmount
+  if (patch.annualRatePercent != null) body.annualRatePercent = patch.annualRatePercent
+  if (patch.maturityValue != null) body.maturityValue = patch.maturityValue
+  if (patch.maturityDate != null) body.maturityDate = patch.maturityDate
+  if (patch.status != null) body.status = patch.status
+  if (patch.notes !== undefined) body.notes = patch.notes?.trim() ?? null
+  return apiRequest<AccountFixedDeposit>(
+    `/api/v1/accounts/${encodeURIComponent(accountId)}/fixed-deposits/${encodeURIComponent(depositId)}`,
+    { method: 'PATCH', body: JSON.stringify(body) },
+  )
+}
+
+export async function deleteAccountFixedDeposit(depositId: string, accountId: string): Promise<void> {
+  await apiRequest<void>(
+    `/api/v1/accounts/${encodeURIComponent(accountId)}/fixed-deposits/${encodeURIComponent(depositId)}`,
     { method: 'DELETE' },
   )
 }

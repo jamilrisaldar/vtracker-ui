@@ -6,6 +6,20 @@ import type {
   ProjectStatus,
 } from '../../types'
 
+const PHASE_STATUS_ROW_BG: Record<PhaseStatus, string> = {
+  not_started: 'bg-slate-50/90 hover:bg-slate-100/80',
+  in_progress: 'bg-sky-50 hover:bg-sky-100/75',
+  done: 'bg-emerald-50 hover:bg-emerald-100/75',
+}
+
+/** Table row background by phase / task `status`. */
+export function phaseTableRowClassName(status: PhaseStatus): string {
+  return [
+    'group border-b border-slate-100 transition-colors',
+    PHASE_STATUS_ROW_BG[status] ?? PHASE_STATUS_ROW_BG.not_started,
+  ].join(' ')
+}
+
 export const tabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'phases', label: 'Phases & tasks' },
