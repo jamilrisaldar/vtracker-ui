@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { Account, Invoice } from '../types'
 import * as api from '../api/dataApi'
 import { AccountAddPanel } from '../components/AccountAddPanel'
+import { AccountsSummaryReport } from '../components/accounts/AccountsSummaryReport'
 import { AccountFixedDepositsPanel } from '../components/accounts/AccountFixedDepositsPanel'
 import { AccountTransactionsSection } from '../components/accounts/AccountTransactionsSection'
 import { PencilIcon, TrashIcon, iconBtnClass } from '../components/accounts/ledgerIcons'
@@ -37,6 +38,8 @@ export function AccountsPage() {
   const [deleteAccountTarget, setDeleteAccountTarget] = useState<Account | null>(null)
   const [deleteAccountNameInput, setDeleteAccountNameInput] = useState('')
   const [deleteAccountBusy, setDeleteAccountBusy] = useState(false)
+
+  const [showAccountsReport, setShowAccountsReport] = useState(false)
 
   const refreshAccountsData = useCallback(async () => {
     setErr(null)
@@ -172,6 +175,14 @@ export function AccountsPage() {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+            aria-expanded={showAccountsReport}
+            onClick={() => setShowAccountsReport((v) => !v)}
+          >
+            {showAccountsReport ? 'Hide report' : 'Report'}
+          </button>
+          <button
+            type="button"
             className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
             onClick={() => {
               setEditingAccount(null)
@@ -293,6 +304,12 @@ export function AccountsPage() {
             <p className="mt-2 text-xs text-slate-500">
               Balance = sum(debits) − sum(credits) for bank/cash (asset) accounts.
             </p>
+
+            <AccountsSummaryReport
+              visible={showAccountsReport}
+              accounts={accounts}
+              balancesByAccountId={balancesByAccountId}
+            />
           </section>
 
           {selectedAccount ? (
