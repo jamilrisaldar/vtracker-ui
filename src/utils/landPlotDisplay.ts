@@ -62,6 +62,40 @@ export function plotEffectiveSqFt(p: LandPlot): number | null {
   return plotCalculatedSqFtFromDimensions(p)
 }
 
+/**
+ * Closed-sale value for summaries: final total, then posted total, then implied from $/ft × sq ft.
+ */
+export function plotSoldRevenueAmount(p: LandPlot): number | null {
+  const ft = plotEffectiveSqFt(p)
+  const sq = ft != null && ft > 0 ? ft : null
+  const finalTot = toFiniteNumber(p.finalTotalPurchasePrice)
+  if (finalTot != null && finalTot > 0) return finalTot
+  const postedTot = toFiniteNumber(p.totalPurchasePrice)
+  if (postedTot != null && postedTot > 0) return postedTot
+  const finalPsf = toFiniteNumber(p.finalPricePerSqft)
+  if (finalPsf != null && finalPsf > 0 && sq != null) return finalPsf * sq
+  const psf = toFiniteNumber(p.pricePerSqft)
+  if (psf != null && psf > 0 && sq != null) return psf * sq
+  return null
+}
+
+/**
+ * Listing / pipeline value: posted total first, then agreed final total, then implied from $/ft × sq ft.
+ */
+export function plotProjectedSaleAmount(p: LandPlot): number | null {
+  const ft = plotEffectiveSqFt(p)
+  const sq = ft != null && ft > 0 ? ft : null
+  const postedTot = toFiniteNumber(p.totalPurchasePrice)
+  if (postedTot != null && postedTot > 0) return postedTot
+  const finalTot = toFiniteNumber(p.finalTotalPurchasePrice)
+  if (finalTot != null && finalTot > 0) return finalTot
+  const finalPsf = toFiniteNumber(p.finalPricePerSqft)
+  if (finalPsf != null && finalPsf > 0 && sq != null) return finalPsf * sq
+  const psf = toFiniteNumber(p.pricePerSqft)
+  if (psf != null && psf > 0 && sq != null) return psf * sq
+  return null
+}
+
 export function plotDimensionsLabel(p: LandPlot): string {
   if (p.isIrregular) {
     const w1 = p.widthFeet

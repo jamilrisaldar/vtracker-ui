@@ -1,8 +1,13 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import * as api from '../../api/dataApi'
-import type { LandPlot } from '../../types'
-import { formatMoneyInrShorthand } from '../../utils/format'
-import { plotDimensionsLabel, plotEffectiveSqFt } from '../../utils/landPlotDisplay'
+import type { LandPlot, PlotStatus } from '../../types'
+import { MoneyInrShorthand } from '../MoneyInrShorthand'
+import {
+  plotDimensionsLabel,
+  plotEffectiveSqFt,
+  plotProjectedSaleAmount,
+  plotSoldRevenueAmount,
+} from '../../utils/landPlotDisplay'
 import { PlotAddEditPanel } from '../PlotAddEditPanel'
 import {
   plotStatusLabel,
@@ -153,6 +158,20 @@ function IconBookmarkOutline({ className }: { className?: string }) {
 const iconBtnBase =
   'inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-200 p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-1 disabled:opacity-50'
 
+/** Sold first, then pipeline toward open (matches typical reporting order). */
+const PLOT_STATUS_SUMMARY_ORDER: PlotStatus[] = [
+  'sold',
+  'conditional_sale',
+  'negotiating',
+  'open',
+]
+
+function plotAmountKindLabel(status: PlotStatus): string {
+  if (status === 'sold') return 'Revenue'
+  if (status === 'open') return 'Posted / projected total'
+  return 'Projected total'
+}
+
 export function PlotsTab({
   projectId,
   plots,
@@ -186,6 +205,35 @@ export function PlotsTab({
   const deleteExpected = deleteTarget ? deleteConfirmationExpected(deleteTarget) : ''
   const deleteCanSubmit =
     deleteTarget != null && deleteConfirmInput === deleteExpected && !deleteBusy
+
+  const plotStatusSummary = useMemo(() => {
+    return PLOT_STATUS_SUMMARY_ORDER.map((status) => {
+      const group = plots.filter((p) => p.status === status)
+      const count = group.length
+      if (count === 0) return null
+      const getAmt = status === 'sold' ? plotSoldRevenueAmount : plotProjectedSaleAmount
+      const byCurrency = new Map<string, number>()
+      let unpriced = 0
+      for (const p of group) {
+        const a = getAmt(p)
+        if (a == null || !Number.isFinite(a)) unpriced += 1
+        else {
+          const c = (p.currency ?? 'INR').trim() || 'INR'
+          byCurrency.set(c, (byCurrency.get(c) ?? 0) + a)
+        }
+      }
+      return {
+        status,
+        count,
+        byCurrency,
+        unpriced,
+        statusLabel: plotStatusLabel(status),
+        amountLabel: plotAmountKindLabel(status),
+      }
+    }).filter(
+      (row): row is NonNullable<typeof row> => row != null,
+    )
+  }, [plots])
 
   return (
     <div className="space-y-6">
@@ -421,22 +469,44 @@ export function PlotsTab({
                       {p.plotDetails?.trim() ? p.plotDetails : '—'}
                     </td>
                     <td className="min-w-[7.5rem] px-4 py-3 text-right tabular-nums">
-                      {formatMoneyInrShorthand(p.pricePerSqft, p.currency)}
+                      <MoneyInrShorthand
+                        amount={p.pricePerSqft}
+                        currency={p.currency}
+                        className="tabular-nums"
+                      />
                     </td>
                     <td className="min-w-[8rem] px-4 py-3 text-right font-medium tabular-nums">
-                      {p.totalPurchasePrice != null
-                        ? formatMoneyInrShorthand(p.totalPurchasePrice, p.currency)
-                        : '—'}
+                      {p.totalPurchasePrice != null ? (
+                        <MoneyInrShorthand
+                          amount={p.totalPurchasePrice}
+                          currency={p.currency}
+                          className="font-medium tabular-nums"
+                        />
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td className="min-w-[7.5rem] px-4 py-3 text-right tabular-nums text-slate-700">
-                      {p.finalPricePerSqft != null
-                        ? formatMoneyInrShorthand(p.finalPricePerSqft, p.currency)
-                        : '—'}
+                      {p.finalPricePerSqft != null ? (
+                        <MoneyInrShorthand
+                          amount={p.finalPricePerSqft}
+                          currency={p.currency}
+                          className="tabular-nums text-slate-700"
+                        />
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td className="min-w-[8rem] px-4 py-3 text-right tabular-nums text-slate-700">
-                      {p.finalTotalPurchasePrice != null
-                        ? formatMoneyInrShorthand(p.finalTotalPurchasePrice, p.currency)
-                        : '—'}
+                      {p.finalTotalPurchasePrice != null ? (
+                        <MoneyInrShorthand
+                          amount={p.finalTotalPurchasePrice}
+                          currency={p.currency}
+                          className="tabular-nums text-slate-700"
+                        />
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td className="min-w-[8rem] max-w-[12rem] truncate px-4 py-3 text-slate-600" title={p.purchaseParty}>
                       {trunc(p.purchaseParty, 24)}
@@ -492,6 +562,48 @@ export function PlotsTab({
             </tbody>
           </table>
         </div>
+
+        {plots.length > 0 ? (
+          <div className="border-t border-slate-200 bg-slate-50/90 px-4 py-4">
+            <h3 className="text-sm font-semibold text-slate-900">Summary by status</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Totals use final/posted amounts when set; otherwise price per sq ft × square feet. Mixed
+              currencies are shown separately.
+            </p>
+            <ul className="mt-3 space-y-2.5 text-sm text-slate-800">
+              {plotStatusSummary.map((row) => (
+                <li key={row.status} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="font-medium text-slate-900">
+                    {row.count} plot{row.count === 1 ? '' : 's'} ({row.statusLabel})
+                  </span>
+                  <span className="text-slate-500">—</span>
+                  <span className="text-slate-600">{row.amountLabel}:</span>
+                  {row.byCurrency.size === 0 ? (
+                    <span className="text-slate-500">no priced plots</span>
+                  ) : (
+                    <span className="text-right font-medium">
+                      {[...row.byCurrency.entries()].map(([cur, sum], i) => (
+                        <span key={cur}>
+                          {i > 0 ? <span className="text-slate-400"> · </span> : null}
+                          <MoneyInrShorthand
+                            amount={sum}
+                            currency={cur}
+                            className="tabular-nums"
+                          />
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                  {row.unpriced > 0 ? (
+                    <span className="w-full text-xs text-slate-500 sm:w-auto sm:pl-1">
+                      ({row.unpriced} without usable price data)
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </div>
   )

@@ -21,6 +21,34 @@ export function formatMoney(amount: number, currency = 'INR'): string {
   }
 }
 
+/**
+ * Money string safe for jsPDF built-in fonts (Helvetica): they lack ₹, €, etc.
+ * INR → `Rs.` + en-IN digits; other currencies → ISO code + amount (ASCII).
+ */
+export function formatMoneyForPdf(amount: number, currency: string): string {
+  const c = currency.trim().toUpperCase()
+  if (c === 'INR') {
+    try {
+      const num = new Intl.NumberFormat('en-IN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(amount)
+      return `Rs. ${num}`
+    } catch {
+      return `Rs. ${amount}`
+    }
+  }
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: c,
+      currencyDisplay: 'code',
+    }).format(amount)
+  } catch {
+    return `${amount} ${c}`
+  }
+}
+
 const INR_LAKH = 100_000
 const INR_CRORE = 10_000_000
 
@@ -35,6 +63,12 @@ function trimUpToTwoDecimals(n: number): string {
  * For INR: use ₹ with L (lakhs) or CR (crores) when |amount| ≥ 1 lakh or 1 crore;
  * otherwise en-IN currency format. Other currencies use `formatMoney`.
  */
+/** True when INR amount is shown as L/CR shorthand (≥ 1 lakh). */
+export function isInrShorthandCompressed(amount: number, currency: string): boolean {
+  if (currency.trim().toUpperCase() !== 'INR') return false
+  return Math.abs(amount) >= INR_LAKH
+}
+
 export function formatMoneyInrShorthand(amount: number, currency: string): string {
   const c = currency.trim().toUpperCase()
   if (c !== 'INR') {

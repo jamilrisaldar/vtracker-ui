@@ -9,9 +9,14 @@ import type {
 } from '../types'
 import * as api from '../api/dataApi'
 import { AccountAddPanel } from '../components/AccountAddPanel'
+import { MoneyInrShorthand } from '../components/MoneyInrShorthand'
 import { TransactionFormPanel } from '../components/TransactionFormPanel'
 import { clearAccountsPage, fetchAccountsPaymentContext } from '../store/slices/accountsPageSlice'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
+import {
+  exportAccountTransactionsExcel,
+  exportAccountTransactionsPdf,
+} from '../utils/exportAccountTransactions'
 import { formatDate, formatMoney } from '../utils/format'
 
 function ledgerBalance(transactions: AccountTransaction[]): number {
@@ -389,15 +394,22 @@ export function AccountsPage() {
               undone.
             </p>
             <p className="mt-3 text-sm text-slate-600">
-              Type the transaction amount exactly as shown below to confirm:
+              Type the numeric amount below exactly as shown in the confirmation field (no currency
+              symbols).
             </p>
-            <p className="mt-2 rounded-lg bg-slate-100 px-3 py-2 font-medium text-slate-900">
+            <p className="mt-2 text-right text-sm font-medium text-slate-800">
+              <MoneyInrShorthand
+                amount={deleteTransactionTarget.amount}
+                currency={selectedAccount.currency}
+              />
+            </p>
+            <p className="mt-2 rounded-lg bg-slate-100 px-3 py-2 text-right font-mono text-sm font-medium text-slate-900">
               {deleteTransactionExpectedAmount} ({selectedAccount.currency})
             </p>
             <label className="mt-4 block">
               <span className="text-xs font-medium text-slate-600">Transaction amount</span>
               <input
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-right font-mono text-sm tabular-nums"
                 value={deleteTransactionAmountInput}
                 onChange={(e) => setDeleteTransactionAmountInput(e.target.value)}
                 placeholder={deleteTransactionExpectedAmount}
@@ -510,7 +522,7 @@ export function AccountsPage() {
                     <th className="px-4 py-3">Type</th>
                     <th className="px-4 py-3">Project tag</th>
                     <th className="px-4 py-3">Currency</th>
-                    <th className="px-4 py-3">Balance</th>
+                    <th className="px-4 py-3 text-right tabular-nums">Balance</th>
                     <th className={tableActionsLastColClass}>
                       <span className="sr-only">Remove</span>
                     </th>
@@ -560,8 +572,12 @@ export function AccountsPage() {
                           {a.projectId ? projectNameById.get(a.projectId) ?? '—' : '—'}
                         </td>
                         <td className="px-4 py-3 text-slate-600">{a.currency}</td>
-                        <td className="px-4 py-3 font-mono text-slate-800">
-                          {formatMoney(balances[a.id] ?? 0, a.currency)}
+                        <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-800">
+                          <MoneyInrShorthand
+                            amount={balances[a.id] ?? 0}
+                            currency={a.currency}
+                            className="font-mono tabular-nums"
+                          />
                         </td>
                         <td className={tableActionsLastColClass} onClick={(e) => e.stopPropagation()}>
                           <div className="flex w-[2.75rem] shrink-0 flex-nowrap justify-center">
@@ -626,6 +642,46 @@ export function AccountsPage() {
                         Active
                       </span>
                     ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+                    onClick={() => {
+                      if (!selectedAccount) return
+                      setErr(null)
+                      try {
+                        exportAccountTransactionsPdf(
+                          selectedAccount,
+                          transactions,
+                          projectNameById,
+                          txFilterApplied,
+                        )
+                      } catch (e) {
+                        setErr(e instanceof Error ? e.message : 'PDF export failed.')
+                      }
+                    }}
+                  >
+                    Export PDF
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+                    onClick={() => {
+                      if (!selectedAccount) return
+                      setErr(null)
+                      try {
+                        exportAccountTransactionsExcel(
+                          selectedAccount,
+                          transactions,
+                          projectNameById,
+                          txFilterApplied,
+                        )
+                      } catch (e) {
+                        setErr(e instanceof Error ? e.message : 'Excel export failed.')
+                      }
+                    }}
+                  >
+                    Export Excel
                   </button>
                   <button
                     type="button"
@@ -758,8 +814,10 @@ export function AccountsPage() {
                       </th>
                       <th className="whitespace-nowrap px-3 py-2">Date</th>
                       <th className="whitespace-nowrap px-3 py-2">Entry</th>
-                      <th className="whitespace-nowrap px-3 py-2">Amount</th>
-                      <th className="whitespace-nowrap px-3 py-2">Running balance</th>
+                      <th className="whitespace-nowrap px-3 py-2 text-right tabular-nums">Amount</th>
+                      <th className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
+                        Running balance
+                      </th>
                       <th className="whitespace-nowrap px-3 py-2">Project</th>
                       <th className="whitespace-nowrap px-3 py-2">Plots</th>
                       <th className={`whitespace-nowrap px-3 py-2 ${txDescriptionColClass}`}>Description</th>
@@ -826,18 +884,26 @@ export function AccountsPage() {
                           >
                             {t.entryType}
                           </td>
-                          <td
-                            className={[
-                              'px-3 py-2 font-mono',
-                              t.entryType === 'debit' ? 'text-emerald-700' : 'text-red-700',
-                            ].join(' ')}
-                          >
-                            {formatMoney(t.amount, selectedAccount.currency)}
+                          <td className="px-3 py-2 text-right">
+                            <MoneyInrShorthand
+                              amount={t.amount}
+                              currency={selectedAccount.currency}
+                              className={[
+                                'font-mono tabular-nums',
+                                t.entryType === 'debit' ? 'text-emerald-700' : 'text-red-700',
+                              ].join(' ')}
+                            />
                           </td>
-                          <td className="px-3 py-2 font-mono text-slate-800">
-                            {t.runningBalance == null
-                              ? '—'
-                              : formatMoney(t.runningBalance, selectedAccount.currency)}
+                          <td className="px-3 py-2 text-right font-mono tabular-nums text-slate-800">
+                            {t.runningBalance == null ? (
+                              '—'
+                            ) : (
+                              <MoneyInrShorthand
+                                amount={t.runningBalance}
+                                currency={selectedAccount.currency}
+                                className="font-mono tabular-nums text-slate-800"
+                              />
+                            )}
                           </td>
                           <td className="px-3 py-2 text-xs text-slate-600">
                             {t.projectId ? projectNameById.get(t.projectId) ?? '—' : '—'}

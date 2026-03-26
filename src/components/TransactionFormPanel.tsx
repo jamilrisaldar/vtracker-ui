@@ -8,7 +8,7 @@ import type {
   Project,
   TransactionPaymentOption,
 } from '../types'
-import { formatDate, formatMoney } from '../utils/format'
+import { formatDate, formatMoney, formatMoneyInrShorthand, isInrShorthandCompressed } from '../utils/format'
 
 export type { TransactionPaymentOption }
 
@@ -227,7 +227,7 @@ export function TransactionFormPanel({
             type="number"
             min={0}
             step="0.01"
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-right font-mono text-sm tabular-nums"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
           />
@@ -319,10 +319,14 @@ export function TransactionFormPanel({
             <option value="">— None —</option>
             {paymentOptions.map(({ payment: p, projectName: pname }) => {
               const inv = invoiceById.get(p.invoiceId)
+              const payCur = inv?.currency ?? account.currency
+              const amtTitle = isInrShorthandCompressed(p.amount, payCur)
+                ? formatMoney(p.amount, payCur)
+                : undefined
               return (
-                <option key={p.id} value={p.id}>
+                <option key={p.id} value={p.id} title={amtTitle}>
                   [{pname}] {formatDate(p.paidDate)} — {vendorName.get(p.vendorId) ?? 'Vendor'}{' '}
-                  — {formatMoney(p.amount, inv?.currency)} (inv {inv?.invoiceNumber ?? '?'})
+                  — {formatMoneyInrShorthand(p.amount, payCur)} (inv {inv?.invoiceNumber ?? '?'})
                 </option>
               )
             })}
