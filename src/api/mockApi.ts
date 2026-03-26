@@ -894,7 +894,7 @@ export async function listAccountFixedDeposits(accountId: string): Promise<Accou
     .filter((d) => d.accountId === accountId)
     .sort(
       (a, b) =>
-        b.effectiveDate.localeCompare(a.effectiveDate) ||
+        a.maturityDate.localeCompare(b.maturityDate) ||
         a.certificateNumber.localeCompare(b.certificateNumber),
     )
     .map((row) => enrichAccountFixedDeposit(row))

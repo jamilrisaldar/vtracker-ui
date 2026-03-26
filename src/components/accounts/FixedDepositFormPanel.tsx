@@ -29,6 +29,7 @@ export function FixedDepositFormPanel({
   mode,
   accountId,
   deposit,
+  templateForNew,
   onClose,
   onSaved,
   onError,
@@ -37,6 +38,8 @@ export function FixedDepositFormPanel({
   mode: 'add' | 'edit'
   accountId: string
   deposit?: AccountFixedDeposit
+  /** When adding, pre-fill from an existing row (certificate # left blank). */
+  templateForNew?: AccountFixedDeposit | null
   onClose: () => void
   onSaved: () => Promise<void>
   onError: (msg: string | null) => void
@@ -55,6 +58,19 @@ export function FixedDepositFormPanel({
         notes: deposit.notes ?? '',
       }
     }
+    if (mode === 'add' && templateForNew) {
+      const t = templateForNew
+      return {
+        certificateNumber: '',
+        effectiveDate: t.effectiveDate,
+        principalStr: String(t.principalAmount),
+        rateStr: String(t.annualRatePercent),
+        maturityValueStr: String(t.maturityValue),
+        maturityDate: t.maturityDate,
+        status: 'active' as AccountFixedDepositStatus,
+        notes: t.notes ?? '',
+      }
+    }
     return {
       certificateNumber: '',
       effectiveDate: '',
@@ -65,7 +81,7 @@ export function FixedDepositFormPanel({
       status: 'active' as AccountFixedDepositStatus,
       notes: '',
     }
-  }, [mode, deposit])
+  }, [mode, deposit, templateForNew])
 
   const [certificateNumber, setCertificateNumber] = useState(initial.certificateNumber)
   const [effectiveDate, setEffectiveDate] = useState(initial.effectiveDate)
@@ -150,7 +166,11 @@ export function FixedDepositFormPanel({
         .join(' ')}
     >
       <h2 className="text-lg font-medium text-slate-900">
-        {mode === 'add' ? 'Add certificate' : 'Edit certificate'}
+        {mode === 'add'
+          ? templateForNew
+            ? 'Add certificate (from copy)'
+            : 'Add certificate'
+          : 'Edit certificate'}
       </h2>
       <p className="mt-1 text-xs text-slate-500">
         Daily interest and accrued amounts use simple interest (annual rate ÷ 365) and update when you

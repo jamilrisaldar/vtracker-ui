@@ -41,6 +41,8 @@ export function AccountFixedDepositsPanel({
   const [loading, setLoading] = useState(false)
   const [panelMode, setPanelMode] = useState<'add' | 'edit' | null>(null)
   const [editing, setEditing] = useState<AccountFixedDeposit | null>(null)
+  const [copyTemplate, setCopyTemplate] = useState<AccountFixedDeposit | null>(null)
+  const [fdPanelSeq, setFdPanelSeq] = useState(0)
 
   const [deleteTarget, setDeleteTarget] = useState<AccountFixedDeposit | null>(null)
   const [deleteInput, setDeleteInput] = useState('')
@@ -177,6 +179,8 @@ export function AccountFixedDepositsPanel({
               className="rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white hover:bg-teal-700"
               onClick={() => {
                 setEditing(null)
+                setCopyTemplate(null)
+                setFdPanelSeq((s) => s + 1)
                 setPanelMode('add')
               }}
             >
@@ -189,6 +193,7 @@ export function AccountFixedDepositsPanel({
                 onClick={() => {
                   setPanelMode(null)
                   setEditing(null)
+                  setCopyTemplate(null)
                   onClose()
                 }}
               >
@@ -237,8 +242,15 @@ export function AccountFixedDepositsPanel({
                 summaryRows={rows}
                 currency={account.currency}
                 onEdit={(d) => {
+                  setCopyTemplate(null)
                   setEditing(d)
                   setPanelMode('edit')
+                }}
+                onCopy={(d) => {
+                  setEditing(null)
+                  setCopyTemplate(d)
+                  setFdPanelSeq((s) => s + 1)
+                  setPanelMode('add')
                 }}
                 onDelete={(d) => {
                   setDeleteInput('')
@@ -254,12 +266,15 @@ export function AccountFixedDepositsPanel({
         <div className="fixed inset-0 z-[66] bg-slate-900/40" aria-hidden="true">
           <div className="absolute inset-y-0 right-0 w-full max-w-lg">
             <FixedDepositFormPanel
+              key={`${panelMode}-${editing?.id ?? ''}-${copyTemplate?.id ?? ''}-${fdPanelSeq}`}
               mode={panelMode}
               accountId={account.id}
               deposit={panelMode === 'edit' ? editing ?? undefined : undefined}
+              templateForNew={panelMode === 'add' ? copyTemplate : null}
               onClose={() => {
                 setPanelMode(null)
                 setEditing(null)
+                setCopyTemplate(null)
               }}
               onSaved={load}
               onError={onError}
