@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import type { Account, Invoice } from '../types'
 import * as api from '../api/dataApi'
 import { AccountAddPanel } from '../components/AccountAddPanel'
-import { AccountFixedDepositsModal } from '../components/accounts/AccountFixedDepositsModal'
+import { AccountFixedDepositsPanel } from '../components/accounts/AccountFixedDepositsPanel'
 import { AccountTransactionsSection } from '../components/accounts/AccountTransactionsSection'
 import { PencilIcon, TrashIcon, iconBtnClass } from '../components/accounts/ledgerIcons'
 import { MoneyInrShorthand } from '../components/MoneyInrShorthand'
@@ -13,6 +13,8 @@ import { useAppDispatch, useAppSelector } from '../store/hooks'
 /** Fixed columns: primary actions (first col), delete only (last col); icons must not wrap. */
 const tableActionsFirstColClass = 'w-[2.75rem] min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-2 py-3'
 const tableActionsLastColClass = 'w-[2.75rem] min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-2 py-3'
+
+type AccountDetailTab = 'transactions' | 'fixedDeposits'
 
 export function AccountsPage() {
   const dispatch = useAppDispatch()
@@ -26,7 +28,7 @@ export function AccountsPage() {
   const invoiceByIdRecord = useAppSelector((s) => s.accountsPage.invoiceById)
 
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
-  const [fixedDepositsOpen, setFixedDepositsOpen] = useState(false)
+  const [accountDetailTab, setAccountDetailTab] = useState<AccountDetailTab>('transactions')
   const [err, setErr] = useState<string | null>(null)
   const [showAddAccountPanel, setShowAddAccountPanel] = useState(false)
   const [editingAccount, setEditingAccount] = useState<Account | null>(null)
@@ -53,7 +55,7 @@ export function AccountsPage() {
   }, [dispatch])
 
   useEffect(() => {
-    setFixedDepositsOpen(false)
+    setAccountDetailTab('transactions')
   }, [selectedAccountId])
 
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId)
@@ -294,33 +296,82 @@ export function AccountsPage() {
           </section>
 
           {selectedAccount ? (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-end gap-2">
+            <section
+              className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+              aria-label={`Account detail: ${selectedAccount.name}`}
+            >
+              <div
+                className="flex flex-wrap gap-1 border-b border-slate-200 bg-slate-50 px-2 pt-2"
+                role="tablist"
+                aria-label="Account sections"
+              >
                 <button
                   type="button"
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
-                  onClick={() => setFixedDepositsOpen(true)}
+                  role="tab"
+                  id="account-tab-transactions"
+                  aria-selected={accountDetailTab === 'transactions'}
+                  aria-controls="account-panel-transactions"
+                  tabIndex={accountDetailTab === 'transactions' ? 0 : -1}
+                  className={[
+                    'rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors',
+                    accountDetailTab === 'transactions'
+                      ? 'border border-b-0 border-slate-200 bg-white text-teal-800'
+                      : 'border border-transparent text-slate-600 hover:bg-slate-100/80 hover:text-slate-900',
+                  ].join(' ')}
+                  onClick={() => setAccountDetailTab('transactions')}
                 >
-                  Fixed deposits & certificates
+                  Transactions
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="account-tab-fixed-deposits"
+                  aria-selected={accountDetailTab === 'fixedDeposits'}
+                  aria-controls="account-panel-fixed-deposits"
+                  tabIndex={accountDetailTab === 'fixedDeposits' ? 0 : -1}
+                  className={[
+                    'rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors',
+                    accountDetailTab === 'fixedDeposits'
+                      ? 'border border-b-0 border-slate-200 bg-white text-teal-800'
+                      : 'border border-transparent text-slate-600 hover:bg-slate-100/80 hover:text-slate-900',
+                  ].join(' ')}
+                  onClick={() => setAccountDetailTab('fixedDeposits')}
+                >
+                  Fixed deposits &amp; certificates
                 </button>
               </div>
-              <AccountTransactionsSection
-                key={selectedAccount.id}
-                account={selectedAccount}
-                projects={projects}
-                paymentOptions={paymentOptions}
-                vendorName={vendorName}
-                invoiceById={invoiceById}
-                onAccountsRefresh={refreshAccountsData}
-                onError={setErr}
-              />
-              <AccountFixedDepositsModal
-                open={fixedDepositsOpen}
-                onClose={() => setFixedDepositsOpen(false)}
-                account={selectedAccount}
-                onError={setErr}
-              />
-            </div>
+              <div
+                id="account-panel-transactions"
+                role="tabpanel"
+                aria-labelledby="account-tab-transactions"
+                hidden={accountDetailTab !== 'transactions'}
+              >
+                <AccountTransactionsSection
+                  key={selectedAccount.id}
+                  embedded
+                  account={selectedAccount}
+                  projects={projects}
+                  paymentOptions={paymentOptions}
+                  vendorName={vendorName}
+                  invoiceById={invoiceById}
+                  onAccountsRefresh={refreshAccountsData}
+                  onError={setErr}
+                />
+              </div>
+              <div
+                id="account-panel-fixed-deposits"
+                role="tabpanel"
+                aria-labelledby="account-tab-fixed-deposits"
+                hidden={accountDetailTab !== 'fixedDeposits'}
+              >
+                <AccountFixedDepositsPanel
+                  key={selectedAccount.id}
+                  account={selectedAccount}
+                  onError={setErr}
+                  active={accountDetailTab === 'fixedDeposits'}
+                />
+              </div>
+            </section>
           ) : null}
         </div>
       )}

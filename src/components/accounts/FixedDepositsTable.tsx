@@ -1,19 +1,85 @@
-import type { AccountFixedDeposit } from '../../types'
+import { useMemo } from 'react'
+import type { AccountFixedDeposit, AccountFixedDepositStatus } from '../../types'
+import {
+  ACCOUNT_FIXED_DEPOSIT_STATUSES,
+  ACCOUNT_FIXED_DEPOSIT_STATUS_LABELS,
+} from '../../types'
 import { MoneyInrShorthand } from '../MoneyInrShorthand'
+import { fixedDepositMaturityHighlight } from '../../utils/fixedDepositMetrics'
 import { formatDate } from '../../utils/format'
 import { iconBtnClass, PencilIcon, TrashIcon } from './ledgerIcons'
 
+function maturityRowClass(
+  row: AccountFixedDeposit,
+): { tr: string; maturityCell: string } {
+  if (row.status !== 'active') {
+    return {
+      tr: 'bg-slate-100/80 text-slate-600 hover:bg-slate-200/50',
+      maturityCell: '',
+    }
+  }
+  const tier = fixedDepositMaturityHighlight(row)
+  if (tier === 'within30d') {
+    return {
+      tr: 'bg-emerald-800/18 text-slate-900 hover:bg-emerald-800/28',
+      maturityCell: 'font-medium text-emerald-950',
+    }
+  }
+  if (tier === 'within60d') {
+    return {
+      tr: 'bg-emerald-600/14 text-slate-900 hover:bg-emerald-600/24',
+      maturityCell: 'font-medium text-emerald-900',
+    }
+  }
+  if (tier === 'within90d') {
+    return {
+      tr: 'bg-emerald-400/14 text-slate-900 hover:bg-emerald-400/22',
+      maturityCell: 'font-medium text-emerald-800',
+    }
+  }
+  return {
+    tr: 'bg-white hover:bg-teal-50/30',
+    maturityCell: '',
+  }
+}
+
 export function FixedDepositsTable({
   rows,
+  summaryRows,
   currency,
   onEdit,
   onDelete,
 }: {
   rows: AccountFixedDeposit[]
+  /** Full list for “totals by status”; defaults to `rows` if omitted. */
+  summaryRows?: AccountFixedDeposit[]
   currency: string
   onEdit: (d: AccountFixedDeposit) => void
   onDelete: (d: AccountFixedDeposit) => void
 }) {
+  const allForSummary = summaryRows ?? rows
+
+  const totalsByStatus = useMemo(() => {
+    const init: Record<
+      AccountFixedDepositStatus,
+      { count: number; principal: number; maturityValue: number; accrued: number }
+    > = {
+      active: { count: 0, principal: 0, maturityValue: 0, accrued: 0 },
+      cashed_pre_maturity: { count: 0, principal: 0, maturityValue: 0, accrued: 0 },
+      matured: { count: 0, principal: 0, maturityValue: 0, accrued: 0 },
+      matured_rolled_over: { count: 0, principal: 0, maturityValue: 0, accrued: 0 },
+    }
+    for (const r of allForSummary) {
+      const b = init[r.status as AccountFixedDepositStatus]
+      if (!b) continue
+      b.count += 1
+      b.principal += r.principalAmount
+      b.maturityValue += r.maturityValue
+      b.accrued += r.accruedInterest
+    }
+    return init
+  }, [allForSummary])
+
   const totals = rows.reduce(
     (acc, r) => ({
       principal: acc.principal + r.principalAmount,
@@ -23,6 +89,8 @@ export function FixedDepositsTable({
     }),
     { principal: 0, maturity: 0, daily: 0, accrued: 0 },
   )
+
+  const filteredEmptyButHasData = rows.length === 0 && allForSummary.length > 0
 
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -52,18 +120,16 @@ export function FixedDepositsTable({
           {rows.length === 0 ? (
             <tr>
               <td colSpan={13} className="px-3 py-8 text-center text-slate-500">
-                No certificates yet. Use “Add certificate” to create one.
+                {filteredEmptyButHasData
+                  ? 'No certificates match the selected status filters.'
+                  : 'No certificates yet. Use “Add certificate” to create one.'}
               </td>
             </tr>
           ) : (
-            rows.map((r) => (
-              <tr
-                key={r.id}
-                className={[
-                  r.status === 'cashed' ? 'bg-slate-100/80 text-slate-600' : 'bg-white',
-                  'hover:bg-teal-50/30',
-                ].join(' ')}
-              >
+            rows.map((r) => {
+              const { tr: trClass, maturityCell: maturityCellClass } = maturityRowClass(r)
+              return (
+              <tr key={r.id} className={trClass}>
                 <td className="px-2 py-2 align-middle">
                   <button
                     type="button"
@@ -87,7 +153,11 @@ export function FixedDepositsTable({
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
                   <MoneyInrShorthand amount={r.maturityValue} currency={currency} />
                 </td>
-                <td className="whitespace-nowrap px-3 py-2">{formatDate(r.maturityDate)}</td>
+                <td
+                  className={['whitespace-nowrap px-3 py-2', maturityCellClass].filter(Boolean).join(' ')}
+                >
+                  {formatDate(r.maturityDate)}
+                </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-700">
                   <MoneyInrShorthand amount={r.dailyInterest} currency={currency} />
                 </td>
@@ -97,7 +167,9 @@ export function FixedDepositsTable({
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-700">
                   <MoneyInrShorthand amount={r.accruedInterest} currency={currency} />
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 capitalize">{r.status}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-slate-800">
+                  {ACCOUNT_FIXED_DEPOSIT_STATUS_LABELS[r.status] ?? r.status}
+                </td>
                 <td
                   className="max-w-[12rem] truncate px-3 py-2 text-slate-600"
                   title={r.notes ?? undefined}
@@ -115,7 +187,8 @@ export function FixedDepositsTable({
                   </button>
                 </td>
               </tr>
-            ))
+              )
+            })
           )}
         </tbody>
         {rows.length > 0 ? (
@@ -144,6 +217,59 @@ export function FixedDepositsTable({
           </tfoot>
         ) : null}
       </table>
+
+      {allForSummary.length > 0 ? (
+        <div className="border-t border-slate-200 bg-slate-50/95 px-4 py-3 text-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Totals by status (all certificates)
+          </p>
+          <ul className="mt-2 space-y-2">
+            {ACCOUNT_FIXED_DEPOSIT_STATUSES.map((st) => {
+              const agg = totalsByStatus[st]
+              if (agg.count === 0) return null
+              return (
+                <li
+                  key={st}
+                  className="flex flex-col gap-0.5 border-b border-slate-200/80 pb-2 last:border-0 last:pb-0 sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between sm:gap-x-4"
+                >
+                  <span className="font-medium text-slate-800">
+                    {ACCOUNT_FIXED_DEPOSIT_STATUS_LABELS[st]}
+                  </span>
+                  <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-slate-600 sm:text-sm">
+                    <span>
+                      {agg.count} {agg.count === 1 ? 'certificate' : 'certificates'}
+                    </span>
+                    <span className="tabular-nums">
+                      Principal{' '}
+                      <MoneyInrShorthand
+                        amount={agg.principal}
+                        currency={currency}
+                        className="inline font-mono text-slate-800"
+                      />
+                    </span>
+                    <span className="tabular-nums">
+                      Maturity value{' '}
+                      <MoneyInrShorthand
+                        amount={agg.maturityValue}
+                        currency={currency}
+                        className="inline font-mono text-slate-800"
+                      />
+                    </span>
+                    <span className="tabular-nums">
+                      Accrued{' '}
+                      <MoneyInrShorthand
+                        amount={agg.accrued}
+                        currency={currency}
+                        className="inline font-mono text-slate-800"
+                      />
+                    </span>
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ) : null}
     </div>
   )
 }

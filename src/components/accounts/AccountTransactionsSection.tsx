@@ -48,6 +48,7 @@ export function AccountTransactionsSection({
   invoiceById,
   onAccountsRefresh,
   onError,
+  embedded = false,
 }: {
   account: Account
   projects: Project[]
@@ -56,6 +57,8 @@ export function AccountTransactionsSection({
   invoiceById: Map<string, Invoice>
   onAccountsRefresh: () => Promise<void>
   onError: (msg: string | null) => void
+  /** When true, omit outer card chrome (used inside a parent tab panel). */
+  embedded?: boolean
 }) {
   const cachedTransactions = useAppSelector(
     (s) => s.accountsPage.transactionsByAccountId[account.id],
@@ -236,7 +239,13 @@ export function AccountTransactionsSection({
         </div>
       ) : null}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section
+        className={
+          embedded
+            ? 'p-6 pt-5'
+            : 'rounded-xl border border-slate-200 bg-white p-6 shadow-sm'
+        }
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-medium text-slate-900">Transactions — {account.name}</h2>
           <div className="flex flex-wrap items-center gap-2">

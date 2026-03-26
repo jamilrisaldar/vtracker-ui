@@ -31,7 +31,7 @@ export function computeFixedDepositMetrics(input: {
 }): { dailyInterest: number; daysElapsed: number; accruedInterest: number } {
   const dailyInterest = dailyInterestFromAnnual(input.principalAmount, input.annualRatePercent)
   const endAccrual =
-    input.status === 'cashed'
+    input.status === 'cashed_pre_maturity'
       ? input.maturityDate.trim()
       : minIsoDate(input.asOfDate.trim(), input.maturityDate.trim())
   const daysElapsed = wholeCalendarDaysBetween(input.effectiveDate.trim(), endAccrual)
@@ -45,6 +45,23 @@ export function computeFixedDepositMetrics(input: {
 
 export function todayIsoDateUtc(): string {
   return new Date().toISOString().slice(0, 10)
+}
+
+/** Active FDs only; maturity must be today or later. Sooner maturity → darker highlight tier. */
+export type FixedDepositMaturityHighlight = 'within30d' | 'within60d' | 'within90d'
+
+export function fixedDepositMaturityHighlight(
+  row: Pick<AccountFixedDeposit, 'maturityDate' | 'status'>,
+  asOfIsoDate: string = todayIsoDateUtc(),
+): FixedDepositMaturityHighlight | null {
+  if (row.status !== 'active') return null
+  const mat = row.maturityDate.trim()
+  if (mat < asOfIsoDate) return null
+  const d = wholeCalendarDaysBetween(asOfIsoDate.trim(), mat)
+  if (d <= 30) return 'within30d'
+  if (d <= 60) return 'within60d'
+  if (d <= 90) return 'within90d'
+  return null
 }
 
 export function enrichAccountFixedDeposit(

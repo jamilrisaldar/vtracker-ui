@@ -4,7 +4,9 @@ import type { AccountFixedDeposit, AccountFixedDepositStatus } from '../../types
 
 const statusOptions: { value: AccountFixedDepositStatus; label: string }[] = [
   { value: 'active', label: 'Active' },
-  { value: 'cashed', label: 'Cashed' },
+  { value: 'cashed_pre_maturity', label: 'Cashed - Pre-maturity' },
+  { value: 'matured', label: 'Matured' },
+  { value: 'matured_rolled_over', label: 'Matured - Rolled over' },
 ]
 
 function parseMoney(s: string): number {

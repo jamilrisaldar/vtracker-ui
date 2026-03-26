@@ -168,7 +168,21 @@ export interface AccountTransaction {
   createdAt: string
 }
 
-export type AccountFixedDepositStatus = 'active' | 'cashed'
+export const ACCOUNT_FIXED_DEPOSIT_STATUSES = [
+  'active',
+  'cashed_pre_maturity',
+  'matured',
+  'matured_rolled_over',
+] as const
+
+export type AccountFixedDepositStatus = (typeof ACCOUNT_FIXED_DEPOSIT_STATUSES)[number]
+
+export const ACCOUNT_FIXED_DEPOSIT_STATUS_LABELS: Record<AccountFixedDepositStatus, string> = {
+  active: 'Active',
+  cashed_pre_maturity: 'Cashed - Pre-maturity',
+  matured: 'Matured',
+  matured_rolled_over: 'Matured - Rolled over',
+}
 
 /** Fixed deposit / investment certificate; interest figures computed by API (365-day simple interest). */
 export interface AccountFixedDeposit {

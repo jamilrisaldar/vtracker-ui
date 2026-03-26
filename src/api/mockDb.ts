@@ -1,6 +1,7 @@
 import type {
   Account,
   AccountFixedDeposit,
+  AccountFixedDepositStatus,
   AccountTransaction,
   Invoice,
   LandPlot,
@@ -50,6 +51,20 @@ function emptyDb(): MockDatabase {
   }
 }
 
+function migrateFixedDepositStoredStatus(raw: unknown): AccountFixedDepositStatus {
+  const s = typeof raw === 'string' ? raw : 'active'
+  if (s === 'open') return 'active'
+  if (s === 'cashed') return 'cashed_pre_maturity'
+  if (
+    s === 'active' ||
+    s === 'cashed_pre_maturity' ||
+    s === 'matured' ||
+    s === 'matured_rolled_over'
+  )
+    return s
+  return 'active'
+}
+
 function migratePhase(p: Phase & { order?: number; description?: string }): Phase {
   const displayOrder =
     typeof p.displayOrder === 'number'
@@ -95,7 +110,10 @@ export function loadDb(): MockDatabase {
       tokens: parsed.tokens ?? {},
       accounts: migratedAccounts,
       accountTransactions: parsed.accountTransactions ?? [],
-      accountFixedDeposits: parsed.accountFixedDeposits ?? [],
+      accountFixedDeposits: (parsed.accountFixedDeposits ?? []).map((d) => ({
+        ...d,
+        status: migrateFixedDepositStoredStatus(d.status),
+      })),
       phases: (parsed.phases ?? []).map(migratePhase),
       plots: (parsed.plots ?? []).map((p) => {
         const lp = p as LandPlot
