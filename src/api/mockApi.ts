@@ -175,17 +175,17 @@ export async function getSession(): Promise<AuthSession | null> {
 
 export async function listProjects(): Promise<Project[]> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   return loadDb()
-    .projects.filter((p) => p.userId === userId)
+    .projects.slice()
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
 export async function getProject(projectId: string): Promise<Project | null> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const p = loadDb().projects.find((x) => x.id === projectId)
-  if (!p || p.userId !== userId) return null
+  if (!p) return null
   return p
 }
 
@@ -196,12 +196,11 @@ export async function createProject(input: {
   status?: ProjectStatus
 }): Promise<Project> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const t = nowIso()
   const project: Project = {
     id: id('proj'),
-    userId,
     name: input.name.trim(),
     description: input.description.trim(),
     location: input.location?.trim() || undefined,
@@ -221,10 +220,10 @@ export async function updateProject(
   >,
 ): Promise<Project> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const p = db.projects.find((x) => x.id === projectId)
-  if (!p || p.userId !== userId) throw new Error('Not found')
+  if (!p) throw new Error('Not found')
   if (patch.name != null) p.name = patch.name.trim()
   if (patch.description != null) p.description = patch.description.trim()
   if (patch.location !== undefined) p.location = patch.location?.trim() || undefined
@@ -236,10 +235,10 @@ export async function updateProject(
 
 export async function deleteProject(projectId: string): Promise<void> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const p = db.projects.find((x) => x.id === projectId)
-  if (!p || p.userId !== userId) throw new Error('Not found')
+  if (!p) throw new Error('Not found')
   db.projects = db.projects.filter((x) => x.id !== projectId)
   db.phases = db.phases.filter((x) => x.projectId !== projectId)
   db.plots = db.plots.filter((x) => x.projectId !== projectId)
@@ -328,13 +327,13 @@ export async function updatePhase(
   _projectId?: string,
 ): Promise<Phase> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const ph = db.phases.find((x) => x.id === phaseId)
   if (!ph) throw new Error('Not found')
   if (_projectId && ph.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === ph.projectId)
-  if (!proj || proj.userId !== userId) throw new Error('Not found')
+  if (!proj) throw new Error('Not found')
   if (patch.name != null) ph.name = patch.name.trim()
   if (patch.notes !== undefined) ph.notes = patch.notes?.trim() || undefined
   if (patch.estimatedTotal !== undefined) ph.estimatedTotal = patch.estimatedTotal ?? undefined
@@ -350,13 +349,13 @@ export async function updatePhase(
 
 export async function deletePhase(phaseId: string, _projectId?: string): Promise<void> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const ph = db.phases.find((x) => x.id === phaseId)
   if (!ph) throw new Error('Not found')
   if (_projectId && ph.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === ph.projectId)
-  if (!proj || proj.userId !== userId) throw new Error('Not found')
+  if (!proj) throw new Error('Not found')
   db.phases = db.phases.filter((x) => x.id !== phaseId)
   proj.updatedAt = nowIso()
   saveDb(db)
@@ -462,12 +461,12 @@ export async function updatePlot(
   }>,
 ): Promise<LandPlot> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
   if (!plot) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === projectId)
-  if (!proj || proj.userId !== userId) throw new Error('Not found')
+  if (!proj) throw new Error('Not found')
   if (patch.plotNumber !== undefined) {
     plot.plotNumber = patch.plotNumber?.trim() || undefined
   }
@@ -510,12 +509,12 @@ export async function updatePlot(
 
 export async function deletePlot(plotId: string, projectId: string): Promise<void> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
   if (!plot) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === projectId)
-  if (!proj || proj.userId !== userId) throw new Error('Not found')
+  if (!proj) throw new Error('Not found')
   db.plots = db.plots.filter((x) => x.id !== plotId)
   proj.updatedAt = nowIso()
   saveDb(db)
@@ -566,13 +565,13 @@ export async function updateVendor(
   _projectId?: string,
 ): Promise<Vendor> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const v = db.vendors.find((x) => x.id === vendorId)
   if (!v) throw new Error('Not found')
   if (_projectId && v.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === v.projectId)
-  if (!proj || proj.userId !== userId) throw new Error('Not found')
+  if (!proj) throw new Error('Not found')
   if (patch.name != null) v.name = patch.name.trim()
   if (patch.contactName !== undefined)
     v.contactName = patch.contactName?.trim() || undefined
@@ -586,13 +585,13 @@ export async function updateVendor(
 
 export async function deleteVendor(vendorId: string, _projectId?: string): Promise<void> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const v = db.vendors.find((x) => x.id === vendorId)
   if (!v) throw new Error('Not found')
   if (_projectId && v.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === v.projectId)
-  if (!proj || proj.userId !== userId) throw new Error('Not found')
+  if (!proj) throw new Error('Not found')
   const invIds = db.invoices
     .filter((i) => i.vendorId === vendorId)
     .map((i) => i.id)
@@ -675,13 +674,13 @@ export async function updateInvoice(
   _projectId?: string,
 ): Promise<Invoice> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const inv = db.invoices.find((x) => x.id === invoiceId)
   if (!inv) throw new Error('Not found')
   if (_projectId && inv.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === inv.projectId)
-  if (!proj || proj.userId !== userId) throw new Error('Not found')
+  if (!proj) throw new Error('Not found')
   if (patch.invoiceNumber != null) inv.invoiceNumber = patch.invoiceNumber.trim()
   if (patch.amount != null) inv.amount = patch.amount
   if (patch.currency != null) inv.currency = patch.currency
@@ -695,13 +694,13 @@ export async function updateInvoice(
 
 export async function deleteInvoice(invoiceId: string, _projectId?: string): Promise<void> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const inv = db.invoices.find((x) => x.id === invoiceId)
   if (!inv) throw new Error('Not found')
   if (_projectId && inv.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === inv.projectId)
-  if (!proj || proj.userId !== userId) throw new Error('Not found')
+  if (!proj) throw new Error('Not found')
   db.invoices = db.invoices.filter((x) => x.id !== invoiceId)
   db.payments = db.payments.filter((p) => p.invoiceId !== invoiceId)
   db.documents = db.documents.filter((d) => d.invoiceId !== invoiceId)
@@ -772,13 +771,13 @@ export async function createPayment(input: {
 
 export async function deletePayment(paymentId: string, _projectId?: string): Promise<void> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const pay = db.payments.find((x) => x.id === paymentId)
   if (!pay) throw new Error('Not found')
   if (_projectId && pay.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === pay.projectId)
-  if (!proj || proj.userId !== userId) throw new Error('Not found')
+  if (!proj) throw new Error('Not found')
   const inv = db.invoices.find((i) => i.id === pay.invoiceId)
   db.payments = db.payments.filter((x) => x.id !== paymentId)
   db.accountTransactions = db.accountTransactions.map((t) =>
@@ -815,11 +814,11 @@ export async function createAccount(input: {
   projectId?: string
 }): Promise<Account> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   let projectId: string | undefined = input.projectId
   if (projectId) {
-    const project = db.projects.find((p) => p.id === projectId && p.userId === userId)
+    const project = db.projects.find((p) => p.id === projectId)
     if (!project) throw new Error('Invalid project')
   }
   const acc: Account = {
@@ -845,7 +844,7 @@ export async function updateAccount(
   patch: Partial<Pick<Account, 'kind' | 'name' | 'currency' | 'accountLocation' | 'projectId'>>,
 ): Promise<Account> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const acc = db.accounts.find((x) => x.id === accountId)
   if (!acc) throw new Error('Not found')
@@ -853,7 +852,7 @@ export async function updateAccount(
     if (patch.projectId === null || patch.projectId === '') {
       acc.projectId = undefined
     } else {
-      const project = db.projects.find((p) => p.id === patch.projectId && p.userId === userId)
+      const project = db.projects.find((p) => p.id === patch.projectId)
       if (!project) throw new Error('Invalid project')
       acc.projectId = patch.projectId
     }
@@ -1064,7 +1063,7 @@ export async function createAccountTransaction(input: {
   projectId?: string
 }): Promise<AccountTransaction> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const acc = db.accounts.find((a) => a.id === input.accountId)
   if (!acc) throw new Error('Account not found')
@@ -1073,14 +1072,14 @@ export async function createAccountTransaction(input: {
   if (input.paymentId) {
     const pay = db.payments.find((p) => p.id === input.paymentId)
     if (!pay) throw new Error('Payment not found')
-    const proj = db.projects.find((p) => p.id === pay.projectId && p.userId === userId)
+    const proj = db.projects.find((p) => p.id === pay.projectId)
     if (!proj) throw new Error('Payment not found')
     txnProjectId = pay.projectId
     if (db.accountTransactions.some((t) => t.paymentId === input.paymentId)) {
       throw new Error('A transaction is already linked to this payment')
     }
   } else if (txnProjectId) {
-    const project = db.projects.find((p) => p.id === txnProjectId && p.userId === userId)
+    const project = db.projects.find((p) => p.id === txnProjectId)
     if (!project) throw new Error('Invalid project')
   }
 
@@ -1126,7 +1125,7 @@ export async function updateAccountTransaction(
   },
 ): Promise<AccountTransaction> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const acc = db.accounts.find((a) => a.id === accountId)
   if (!acc) throw new Error('Account not found')
@@ -1137,7 +1136,7 @@ export async function updateAccountTransaction(
   if (input.paymentId) {
     const pay = db.payments.find((p) => p.id === input.paymentId)
     if (!pay) throw new Error('Payment not found')
-    const proj = db.projects.find((p) => p.id === pay.projectId && p.userId === userId)
+    const proj = db.projects.find((p) => p.id === pay.projectId)
     if (!proj) throw new Error('Payment not found')
     txnProjectId = pay.projectId
     if (
@@ -1148,7 +1147,7 @@ export async function updateAccountTransaction(
       throw new Error('A transaction is already linked to this payment')
     }
   } else if (txnProjectId) {
-    const project = db.projects.find((p) => p.id === txnProjectId && p.userId === userId)
+    const project = db.projects.find((p) => p.id === txnProjectId)
     if (!project) throw new Error('Invalid project')
   }
 
@@ -1275,13 +1274,13 @@ function readFileAsDataUrl(file: File): Promise<string> {
 
 export async function deleteDocument(documentId: string, _projectId?: string): Promise<void> {
   await delay()
-  const userId = getUserIdOrThrow()
+  getUserIdOrThrow()
   const db = loadDb()
   const d = db.documents.find((x) => x.id === documentId)
   if (!d) throw new Error('Not found')
   if (_projectId && d.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === d.projectId)
-  if (!proj || proj.userId !== userId) throw new Error('Not found')
+  if (!proj) throw new Error('Not found')
   db.documents = db.documents.filter((x) => x.id !== documentId)
   proj.updatedAt = nowIso()
   saveDb(db)

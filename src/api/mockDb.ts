@@ -104,10 +104,16 @@ export function loadDb(): MockDatabase {
       const { userId: _drop, ...rest } = ac
       return rest as Account
     })
+    const migratedProjects = (parsed.projects ?? []).map((p) => {
+      const pr = p as Project & { userId?: string }
+      const { userId: _drop, ...rest } = pr
+      return rest as Project
+    })
     return {
       ...emptyDb(),
       ...parsed,
       tokens: parsed.tokens ?? {},
+      projects: migratedProjects,
       accounts: migratedAccounts,
       accountTransactions: parsed.accountTransactions ?? [],
       accountFixedDeposits: (parsed.accountFixedDeposits ?? []).map((d) => ({
