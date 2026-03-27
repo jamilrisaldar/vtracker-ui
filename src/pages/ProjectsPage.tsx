@@ -161,36 +161,38 @@ export function ProjectsPage() {
         </form>
       )}
 
-      <div className="mt-8">
+      <div className="mt-6">
         {loading ? (
           <p className="text-sm text-slate-500">Loading projects…</p>
         ) : projects.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-white/50 p-12 text-center text-sm text-slate-600">
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white/50 p-8 text-center text-sm text-slate-600">
             No projects yet. Create one to start tracking phases and vendors.
           </div>
         ) : (
-          <ul className="grid gap-4 sm:grid-cols-2">
+          <ul className="grid gap-2.5 sm:grid-cols-2">
             {projects.map((p) => (
               <li key={p.id}>
                 <Link
                   to={`/projects/${p.id}`}
-                  className="block rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-teal-300 hover:shadow-md"
+                  className="block rounded-lg border border-slate-200 bg-white p-3.5 shadow-sm transition hover:border-teal-300 hover:shadow-md"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold text-slate-900">{p.name}</h3>
+                    <h3 className="text-[0.9375rem] font-semibold leading-snug text-slate-900">
+                      {p.name}
+                    </h3>
                     <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${statusClass[p.status]}`}
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-medium leading-none ${statusClass[p.status]}`}
                     >
                       {statusLabel[p.status]}
                     </span>
                   </div>
                   {p.location && (
-                    <p className="mt-1 text-xs text-slate-500">{p.location}</p>
+                    <p className="mt-1 text-[0.7rem] leading-tight text-slate-500">{p.location}</p>
                   )}
-                  <p className="mt-2 line-clamp-2 text-sm text-slate-600">
+                  <p className="mt-1.5 line-clamp-2 text-xs leading-snug text-slate-600">
                     {p.description || '—'}
                   </p>
-                  <p className="mt-3 text-xs text-slate-400">
+                  <p className="mt-2 text-[0.65rem] text-slate-400">
                     Updated {formatDate(p.updatedAt)}
                   </p>
                 </Link>

@@ -6,11 +6,11 @@ import { PhaseAddEditPanel } from '../PhaseAddEditPanel'
 import { phaseStatusOptions, phaseTableRowClassName } from './constants'
 
 const iconBtnClass =
-  'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'
+  'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'
 
 function PencilIcon() {
   return (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -22,7 +22,7 @@ function PencilIcon() {
 
 function TrashIcon() {
   return (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -108,7 +108,7 @@ export function PhasesTab({
   const deleteCanSubmit = deleteNameOk && !deleteBusy
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       {deleteTarget ? (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4"
@@ -181,7 +181,7 @@ export function PhasesTab({
           type="button"
           disabled={reordering}
           onClick={openAdd}
-          className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
+          className="rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
         >
           Add phase
         </button>
@@ -207,22 +207,22 @@ export function PhasesTab({
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+          <thead className="border-b border-slate-200 bg-slate-50 text-[0.65rem] uppercase leading-tight text-slate-500">
             <tr>
-              <th className="w-14 min-w-[3.5rem] max-w-[3.5rem] whitespace-nowrap px-2 py-3" scope="col">
+              <th className="w-11 min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-1.5 py-2" scope="col">
                 <span className="sr-only">Edit</span>
               </th>
-              <th className="w-px whitespace-nowrap px-2 py-3" scope="col">
+              <th className="w-[4.25rem] min-w-[4.25rem] whitespace-nowrap px-1 py-2" scope="col">
                 Order
               </th>
-              <th className="px-4 py-3">Phase</th>
-              <th className="px-4 py-3">Start</th>
-              <th className="px-4 py-3">End</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="whitespace-nowrap px-4 py-3">Est.</th>
-              <th className="whitespace-nowrap px-4 py-3">Actual</th>
-              <th className="px-4 py-3">Notes</th>
-              <th className="w-14 min-w-[3.5rem] max-w-[3.5rem] whitespace-nowrap px-2 py-3">
+              <th className="px-3 py-2">Phase</th>
+              <th className="px-3 py-2">Start</th>
+              <th className="px-3 py-2">End</th>
+              <th className="px-3 py-2">Status</th>
+              <th className="whitespace-nowrap px-3 py-2">Est.</th>
+              <th className="whitespace-nowrap px-3 py-2">Actual</th>
+              <th className="px-3 py-2">Notes</th>
+              <th className="w-11 min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-1.5 py-2">
                 <span className="sr-only">Remove</span>
               </th>
             </tr>
@@ -230,7 +230,7 @@ export function PhasesTab({
           <tbody>
             {phases.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={10} className="px-3 py-6 text-center text-slate-500">
                   No phases yet.
                 </td>
               </tr>
@@ -311,7 +311,7 @@ function PhaseRow({
 
   return (
     <tr className={phaseTableRowClassName(phase.status)}>
-      <td className="w-14 min-w-[3.5rem] max-w-[3.5rem] whitespace-nowrap px-2 py-3 align-middle">
+      <td className="w-11 min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-1.5 py-1.5 align-middle">
         <button
           type="button"
           title="Edit"
@@ -323,8 +323,8 @@ function PhaseRow({
           <PencilIcon />
         </button>
       </td>
-      <td className="px-2 py-2 align-middle">
-        <div className="flex w-[2.25rem] shrink-0 flex-col flex-nowrap gap-0.5">
+      <td className="w-[4.25rem] min-w-[4.25rem] px-1 py-1.5 align-middle">
+        <div className="flex shrink-0 flex-row items-center justify-center gap-0.5">
           <button
             type="button"
             title="Move up"
@@ -333,7 +333,7 @@ function PhaseRow({
             onClick={() => void movePhase('up')}
             className={iconBtnClass}
           >
-            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
               <path
                 fillRule="evenodd"
                 d="M10 5.293l-6 6 1.414 1.414L10 8.12l4.586 4.586L16 11.293l-6-6z"
@@ -349,7 +349,7 @@ function PhaseRow({
             onClick={() => void movePhase('down')}
             className={iconBtnClass}
           >
-            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
               <path
                 fillRule="evenodd"
                 d="M10 14.707l6-6-1.414-1.414L10 11.88 5.414 7.293 4 8.707l6 6z"
@@ -359,12 +359,12 @@ function PhaseRow({
           </button>
         </div>
       </td>
-      <td className="px-4 py-3 font-medium text-slate-900">{phase.name}</td>
-      <td className="px-4 py-3 text-slate-600">{formatDate(phase.startDate)}</td>
-      <td className="px-4 py-3 text-slate-600">{formatDate(phase.endDate)}</td>
-      <td className="px-4 py-3">
+      <td className="px-3 py-1.5 font-medium text-slate-900">{phase.name}</td>
+      <td className="px-3 py-1.5 text-slate-600">{formatDate(phase.startDate)}</td>
+      <td className="px-3 py-1.5 text-slate-600">{formatDate(phase.endDate)}</td>
+      <td className="px-3 py-1.5">
         <select
-          className="rounded border border-slate-200 bg-white/80 px-2 py-1 text-xs"
+          className="rounded border border-slate-200 bg-white/80 px-1.5 py-0.5 text-xs"
           value={phase.status}
           disabled={reordering || actionsDisabled}
           onChange={(e) => {
@@ -386,23 +386,23 @@ function PhaseRow({
           ))}
         </select>
       </td>
-      <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+      <td className="whitespace-nowrap px-3 py-1.5 text-slate-600">
         {phase.estimatedTotal != null && Number.isFinite(phase.estimatedTotal)
           ? formatMoney(phase.estimatedTotal)
           : moneyDash}
       </td>
-      <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+      <td className="whitespace-nowrap px-3 py-1.5 text-slate-600">
         {phase.actualSpend != null && Number.isFinite(phase.actualSpend)
           ? formatMoney(phase.actualSpend)
           : moneyDash}
       </td>
       <td
-        className="max-w-[14rem] truncate px-4 py-3 text-slate-600"
+        className="max-w-[14rem] truncate px-3 py-1.5 text-slate-600"
         title={notesPreview || undefined}
       >
         {notesPreview || moneyDash}
       </td>
-      <td className="w-14 min-w-[3.5rem] max-w-[3.5rem] whitespace-nowrap px-2 py-3 align-middle">
+      <td className="w-11 min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-1.5 py-1.5 align-middle">
         <button
           type="button"
           title="Delete"
