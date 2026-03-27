@@ -12,6 +12,7 @@ export function DocumentsTab({
   payments,
   onRefresh,
   onError,
+  readOnly = false,
 }: {
   projectId: string
   documents: ProjectDocument[]
@@ -20,6 +21,7 @@ export function DocumentsTab({
   payments: Payment[]
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
+  readOnly?: boolean
 }) {
   const [kind, setKind] = useState<DocumentKind>('invoice')
   const [vendorId, setVendorId] = useState('')
@@ -29,6 +31,10 @@ export function DocumentsTab({
 
   return (
     <div className="space-y-6">
+      {readOnly ? (
+        <p className="text-xs text-amber-800/90">View-only: uploads are disabled.</p>
+      ) : null}
+      {!readOnly ? (
       <form
         className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
         onSubmit={async (e) => {
@@ -142,6 +148,7 @@ export function DocumentsTab({
           Upload
         </button>
       </form>
+      ) : null}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-left text-sm">
@@ -203,7 +210,8 @@ export function DocumentsTab({
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
-                        className="text-xs text-red-600 hover:underline"
+                        disabled={readOnly}
+                        className="text-xs text-red-600 hover:underline disabled:opacity-40"
                         onClick={() => {
                           if (!confirm('Remove this document?')) return
                           void (async () => {

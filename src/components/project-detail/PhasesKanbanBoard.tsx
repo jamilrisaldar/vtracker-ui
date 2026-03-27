@@ -81,6 +81,7 @@ export function PhasesKanbanBoard({
   onEdit,
   onRequestDelete,
   actionsDisabled,
+  readOnly = false,
 }: {
   projectId: string
   phases: Phase[]
@@ -89,7 +90,9 @@ export function PhasesKanbanBoard({
   onEdit: (phase: Phase) => void
   onRequestDelete: (phase: Phase) => void
   actionsDisabled: boolean
+  readOnly?: boolean
 }) {
+  const disabled = actionsDisabled || readOnly
   const initialRange = useMemo(() => defaultCalendarMonthRange(), [])
   const [rangeStart, setRangeStart] = useState(initialRange.start)
   const [rangeEnd, setRangeEnd] = useState(initialRange.end)
@@ -257,7 +260,7 @@ export function PhasesKanbanBoard({
                           type="button"
                           title="Edit"
                           aria-label="Edit phase"
-                          disabled={actionsDisabled}
+                          disabled={disabled}
                           className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
                           onClick={() => onEdit(phase)}
                         >
@@ -267,7 +270,7 @@ export function PhasesKanbanBoard({
                           type="button"
                           title="Delete"
                           aria-label="Delete phase"
-                          disabled={actionsDisabled}
+                          disabled={disabled}
                           className={`${iconBtnClass} text-red-600 hover:border-red-200 hover:bg-red-50`}
                           onClick={() => onRequestDelete(phase)}
                         >
@@ -296,7 +299,7 @@ export function PhasesKanbanBoard({
                       <select
                         className="w-full rounded border border-slate-200 bg-white/90 px-1.5 py-1 text-xs"
                         value={phase.status}
-                        disabled={actionsDisabled}
+                        disabled={disabled}
                         onChange={(e) => {
                           const v = e.target.value as PhaseStatus
                           void (async () => {

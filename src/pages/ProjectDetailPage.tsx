@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { canWriteProjects } from '../auth/roles'
+import { useAuth } from '../auth/useAuth'
 import type { Project } from '../types'
 import * as api from '../api/dataApi'
 import {
@@ -24,6 +26,8 @@ import {
 } from '../store/slices/projectDetailSlice'
 
 export function ProjectDetailPage() {
+  const { user } = useAuth()
+  const readOnly = !canWriteProjects(user)
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
@@ -213,16 +217,18 @@ export function ProjectDetailPage() {
             <p className="mt-1 text-sm text-slate-500">{project.location}</p>
           )}
         </div>
-        <button
-          type="button"
-          className="self-start rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-50"
-          onClick={() => {
-            setDeleteProjectNameInput('')
-            setDeleteProjectOpen(true)
-          }}
-        >
-          Delete project
-        </button>
+        {!readOnly ? (
+          <button
+            type="button"
+            className="self-start rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-50"
+            onClick={() => {
+              setDeleteProjectNameInput('')
+              setDeleteProjectOpen(true)
+            }}
+          >
+            Delete project
+          </button>
+        ) : null}
       </header>
 
       {err && (
@@ -251,7 +257,7 @@ export function ProjectDetailPage() {
 
       <div className="mt-8">
         {tab === 'overview' && (
-          <OverviewTab project={project} onSaved={onOverviewSaved} />
+          <OverviewTab project={project} onSaved={onOverviewSaved} readOnly={readOnly} />
         )}
         {tab === 'phases' && (
           <PhasesTab
@@ -259,6 +265,7 @@ export function ProjectDetailPage() {
             phases={phases}
             onRefresh={refreshPhases}
             onError={setErr}
+            readOnly={readOnly}
           />
         )}
         {tab === 'plots' && (
@@ -267,6 +274,7 @@ export function ProjectDetailPage() {
             plots={plots}
             onRefresh={refreshPlots}
             onError={setErr}
+            readOnly={readOnly}
           />
         )}
         {tab === 'vendors' && (
@@ -278,6 +286,7 @@ export function ProjectDetailPage() {
             vendorName={vendorName}
             onRefresh={refreshVendorBilling}
             onError={setErr}
+            readOnly={readOnly}
           />
         )}
         {tab === 'documents' && (
@@ -289,6 +298,7 @@ export function ProjectDetailPage() {
             payments={payments}
             onRefresh={refreshDocumentsOnly}
             onError={setErr}
+            readOnly={readOnly}
           />
         )}
         {tab === 'reports' && reportLoading && (

@@ -177,11 +177,13 @@ export function PlotsTab({
   plots,
   onRefresh,
   onError,
+  readOnly = false,
 }: {
   projectId: string
   plots: LandPlot[]
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
+  readOnly?: boolean
 }) {
   const [panelMode, setPanelMode] = useState<'add' | 'edit' | null>(null)
   const [panelPlot, setPanelPlot] = useState<LandPlot | null>(null)
@@ -237,6 +239,9 @@ export function PlotsTab({
 
   return (
     <div className="space-y-6">
+      {readOnly ? (
+        <p className="text-xs text-amber-800/90">View-only: plot changes are disabled.</p>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-medium text-slate-900">Land plots</h2>
@@ -244,17 +249,19 @@ export function PlotsTab({
             Track dimensions (feet), area (regular or irregular four sides), pricing, and sale status.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setCopyFromPlot(null)
-            setPanelPlot(null)
-            setPanelMode('add')
-          }}
-          className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-        >
-          Add plot
-        </button>
+        {!readOnly ? (
+          <button
+            type="button"
+            onClick={() => {
+              setCopyFromPlot(null)
+              setPanelPlot(null)
+              setPanelMode('add')
+            }}
+            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+          >
+            Add plot
+          </button>
+        ) : null}
       </div>
 
       {deleteTarget ? (
@@ -426,6 +433,7 @@ export function PlotsTab({
                       <div className="flex w-[5.5rem] shrink-0 flex-nowrap items-center gap-1.5">
                         <button
                           type="button"
+                          disabled={readOnly}
                           className={`${iconBtnBase} shrink-0 text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
                           aria-label="Edit plot"
                           title="Edit"
@@ -439,6 +447,7 @@ export function PlotsTab({
                         </button>
                         <button
                           type="button"
+                          disabled={readOnly}
                           className={`${iconBtnBase} shrink-0 text-slate-600 hover:bg-slate-100`}
                           aria-label="Copy plot to new row"
                           title="Copy"
@@ -544,6 +553,7 @@ export function PlotsTab({
                     <td className="w-11 min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-2 py-3 text-center">
                       <button
                         type="button"
+                        disabled={readOnly}
                         className={`${iconBtnBase} mx-auto text-red-600 hover:border-red-200 hover:bg-red-50`}
                         aria-label="Delete plot"
                         title="Delete"

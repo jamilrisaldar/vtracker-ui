@@ -125,11 +125,15 @@ async function finalizeGoogleProfile(p: {
       picture: p.picture,
       googleSub: p.sub,
       createdAt: nowIso(),
+      roles: [{ id: 1, name: 'Administrator' }],
     } satisfies User
     db.users.push(user)
   } else {
     user.name = p.name
     user.picture = p.picture
+    if (!user.roles?.length) {
+      user.roles = [{ id: 1, name: 'Administrator' }]
+    }
   }
   const token = `tok_${crypto.randomUUID()}`
   db.tokens[token] = user.id

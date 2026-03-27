@@ -14,6 +14,7 @@ export function VendorsTab({
   vendorName,
   onRefresh,
   onError,
+  readOnly = false,
 }: {
   projectId: string
   vendors: Vendor[]
@@ -22,6 +23,7 @@ export function VendorsTab({
   vendorName: Map<string, string>
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
+  readOnly?: boolean
 }) {
   const [panelMode, setPanelMode] = useState<'vendor' | 'invoice' | 'payment' | null>(null)
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null)
@@ -66,6 +68,9 @@ export function VendorsTab({
 
   return (
     <div className="space-y-10">
+      {readOnly ? (
+        <p className="text-xs text-amber-800/90">View-only: vendor and billing changes are disabled.</p>
+      ) : null}
       {panelMode !== null && (
         <div className="fixed inset-0 z-50 bg-slate-900/40" aria-hidden="true">
           <div className="absolute inset-y-0 right-0 w-full max-w-xl">
@@ -115,13 +120,15 @@ export function VendorsTab({
               </button>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setPanelMode('vendor')}
-            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-          >
-            Add vendor
-          </button>
+          {!readOnly ? (
+            <button
+              type="button"
+              onClick={() => setPanelMode('vendor')}
+              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+            >
+              Add vendor
+            </button>
+          ) : null}
         </div>
         <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-left text-sm">
@@ -160,7 +167,8 @@ export function VendorsTab({
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
-                        className="text-xs text-red-600 hover:underline"
+                        disabled={readOnly}
+                        className="text-xs text-red-600 hover:underline disabled:opacity-40"
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!confirm('Delete vendor and related invoice links?')) return
@@ -189,13 +197,15 @@ export function VendorsTab({
       <section>
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-medium text-slate-900">Invoices</h2>
-          <button
-            type="button"
-            onClick={() => setPanelMode('invoice')}
-            className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
-          >
-            Record invoice
-          </button>
+          {!readOnly ? (
+            <button
+              type="button"
+              onClick={() => setPanelMode('invoice')}
+              className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
+            >
+              Record invoice
+            </button>
+          ) : null}
         </div>
         <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-left text-sm">
@@ -229,7 +239,8 @@ export function VendorsTab({
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
-                        className="text-xs text-red-600 hover:underline"
+                        disabled={readOnly}
+                        className="text-xs text-red-600 hover:underline disabled:opacity-40"
                         onClick={() => {
                           if (!confirm('Delete this invoice?')) return
                           void (async () => {
@@ -256,13 +267,15 @@ export function VendorsTab({
       <section>
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-medium text-slate-900">Payments</h2>
-          <button
-            type="button"
-            onClick={() => setPanelMode('payment')}
-            className="rounded-lg bg-teal-800 px-4 py-2 text-sm font-medium text-white hover:bg-teal-900"
-          >
-            Record payment
-          </button>
+          {!readOnly ? (
+            <button
+              type="button"
+              onClick={() => setPanelMode('payment')}
+              className="rounded-lg bg-teal-800 px-4 py-2 text-sm font-medium text-white hover:bg-teal-900"
+            >
+              Record payment
+            </button>
+          ) : null}
         </div>
         <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-left text-sm">
@@ -322,7 +335,8 @@ export function VendorsTab({
                       <td className="px-4 py-3 text-right">
                         <button
                           type="button"
-                          className="text-xs text-red-600 hover:underline"
+                          disabled={readOnly}
+                          className="text-xs text-red-600 hover:underline disabled:opacity-40"
                           onClick={() => {
                             if (!confirm('Delete this payment?')) return
                             void (async () => {

@@ -38,11 +38,13 @@ export function PhasesTab({
   phases,
   onRefresh,
   onError,
+  readOnly = false,
 }: {
   projectId: string
   phases: Phase[]
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
+  readOnly?: boolean
 }) {
   const [reordering, setReordering] = useState(false)
   const [panelMode, setPanelMode] = useState<'add' | 'edit' | null>(null)
@@ -105,7 +107,7 @@ export function PhasesTab({
     return addDaysToIsoDate(last.endDate, 1)
   }, [sortedPhases])
 
-  const actionsDisabled = reordering || panelMode !== null
+  const actionsDisabled = reordering || panelMode !== null || readOnly
   const deleteNameOk = deleteTarget != null && deleteNameInput === deleteTarget.name
   const deleteCanSubmit = deleteNameOk && !deleteBusy
 
@@ -178,6 +180,10 @@ export function PhasesTab({
         </div>
       ) : null}
 
+      {readOnly ? (
+        <p className="text-xs text-amber-800/90">View-only: phase changes are disabled.</p>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div
           className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5"
@@ -207,14 +213,16 @@ export function PhasesTab({
             Kanban
           </button>
         </div>
-        <button
-          type="button"
-          disabled={reordering}
-          onClick={openAdd}
-          className="rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
-        >
-          Add phase
-        </button>
+        {!readOnly ? (
+          <button
+            type="button"
+            disabled={reordering}
+            onClick={openAdd}
+            className="rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
+          >
+            Add phase
+          </button>
+        ) : null}
       </div>
 
       {panelMode !== null && (
@@ -236,15 +244,16 @@ export function PhasesTab({
       )}
 
       {phasesView === 'kanban' ? (
-        <PhasesKanbanBoard
-          projectId={projectId}
-          phases={sortedPhases}
-          onRefresh={onRefresh}
-          onError={onError}
-          onEdit={openEdit}
-          onRequestDelete={openDeletePhase}
-          actionsDisabled={actionsDisabled}
-        />
+          <PhasesKanbanBoard
+            projectId={projectId}
+            phases={sortedPhases}
+            onRefresh={onRefresh}
+            onError={onError}
+            onEdit={openEdit}
+            onRequestDelete={openDeletePhase}
+            actionsDisabled={actionsDisabled}
+            readOnly={readOnly}
+          />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="min-w-full text-left text-sm">

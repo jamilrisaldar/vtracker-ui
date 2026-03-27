@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { canWriteProjects } from '../auth/roles'
+import { useAuth } from '../auth/useAuth'
 import type { Project, ProjectStatus } from '../types'
 import * as api from '../api/dataApi'
 import { formatDate } from '../utils/format'
@@ -19,6 +21,8 @@ const statusClass: Record<ProjectStatus, string> = {
 }
 
 export function ProjectsPage() {
+  const { user } = useAuth()
+  const readOnly = !canWriteProjects(user)
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
@@ -46,6 +50,7 @@ export function ProjectsPage() {
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault()
+    if (readOnly) return
     if (!name.trim()) return
     setErr(null)
     try {
@@ -75,13 +80,17 @@ export function ProjectsPage() {
             Track phases, vendors, invoices, and payments for each hotel build.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setCreating((v) => !v)}
-          className="inline-flex items-center justify-center rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-teal-700"
-        >
-          {creating ? 'Close form' : 'New project'}
-        </button>
+        {!readOnly ? (
+          <button
+            type="button"
+            onClick={() => setCreating((v) => !v)}
+            className="inline-flex items-center justify-center rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white shadow hover:bg-teal-700"
+          >
+            {creating ? 'Close form' : 'New project'}
+          </button>
+        ) : (
+          <p className="text-xs text-slate-500">You have read-only access to projects.</p>
+        )}
       </div>
 
       {err && (
@@ -90,7 +99,7 @@ export function ProjectsPage() {
         </p>
       )}
 
-      {creating && (
+      {creating && !readOnly && (
         <form
           onSubmit={onCreate}
           className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
@@ -166,7 +175,9 @@ export function ProjectsPage() {
           <p className="text-sm text-slate-500">Loading projects…</p>
         ) : projects.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white/50 p-8 text-center text-sm text-slate-600">
-            No projects yet. Create one to start tracking phases and vendors.
+            {readOnly
+              ? 'No projects yet.'
+              : 'No projects yet. Create one to start tracking phases and vendors.'}
           </div>
         ) : (
           <ul className="grid gap-2.5 sm:grid-cols-2">

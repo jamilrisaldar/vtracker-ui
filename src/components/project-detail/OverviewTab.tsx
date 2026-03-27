@@ -5,11 +5,13 @@ import { projectStatusOptions } from './constants'
 export function OverviewTab({
   project,
   onSaved,
+  readOnly = false,
 }: {
   project: Project
   onSaved: (
     patch: Partial<Pick<Project, 'name' | 'description' | 'location' | 'status'>>,
   ) => Promise<void>
+  readOnly?: boolean
 }) {
   const [name, setName] = useState(project.name)
   const [description, setDescription] = useState(project.description)
@@ -31,6 +33,7 @@ export function OverviewTab({
         className="mt-4 grid max-w-xl gap-4"
         onSubmit={async (e) => {
           e.preventDefault()
+          if (readOnly) return
           setSaving(true)
           try {
             await onSaved({ name, description, location, status })
@@ -46,6 +49,8 @@ export function OverviewTab({
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
+            readOnly={readOnly}
+            disabled={readOnly}
           />
         </label>
         <label className="block">
@@ -55,6 +60,8 @@ export function OverviewTab({
             rows={4}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            readOnly={readOnly}
+            disabled={readOnly}
           />
         </label>
         <label className="block">
@@ -63,6 +70,8 @@ export function OverviewTab({
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
+            readOnly={readOnly}
+            disabled={readOnly}
           />
         </label>
         <label className="block max-w-xs">
@@ -71,6 +80,7 @@ export function OverviewTab({
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             value={status}
             onChange={(e) => setStatus(e.target.value as ProjectStatus)}
+            disabled={readOnly}
           >
             {projectStatusOptions.map((o) => (
               <option key={o.value} value={o.value}>
@@ -79,13 +89,17 @@ export function OverviewTab({
             ))}
           </select>
         </label>
-        <button
-          type="submit"
-          disabled={saving}
-          className="w-fit rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
-        >
-          {saving ? 'Saving…' : 'Save changes'}
-        </button>
+        {!readOnly ? (
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-fit rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        ) : (
+          <p className="text-xs text-slate-500">You have read-only access to this project.</p>
+        )}
       </form>
     </div>
   )

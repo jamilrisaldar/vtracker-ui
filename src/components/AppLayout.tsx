@@ -1,9 +1,12 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import type { User } from '../types'
 import { useAuth } from '../auth/useAuth'
+import { canAccessAccounts, canAccessAdmin, canAccessProjects } from '../auth/roles'
 
-const nav = [
-  { to: '/projects', label: 'Projects' },
-  { to: '/accounts', label: 'Accounts' },
+const allNav: { to: string; label: string; allow: (u: User | null) => boolean }[] = [
+  { to: '/projects', label: 'Projects', allow: canAccessProjects },
+  { to: '/accounts', label: 'Accounts', allow: canAccessAccounts },
+  { to: '/admin', label: 'Admin', allow: canAccessAdmin },
 ]
 
 export function AppLayout() {
@@ -20,7 +23,7 @@ export function AppLayout() {
             <p className="text-sm font-semibold text-slate-900">Build &amp; ops</p>
           </div>
           <nav className="flex gap-1 md:flex-col">
-            {nav.map((item) => (
+            {allNav.filter((item) => item.allow(user)).map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
