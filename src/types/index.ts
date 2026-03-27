@@ -109,6 +109,8 @@ export interface PlotSale {
   combinedGroupId?: string
   combinedDisplayName?: string
   combinedPlotIds?: string[]
+  /** When true, payment lines are read-only until unlocked (solo or combined sale). */
+  paymentsLocked?: boolean
 }
 
 /** Multi-plot combined buyer deal (shared sale line + one payment history). */
@@ -126,6 +128,7 @@ export interface CombinedPlotSaleGroup {
   currency: string
   createdAt: string
   updatedAt: string
+  paymentsLocked?: boolean
 }
 
 /** Buyer payment toward a plot sale. */
@@ -142,6 +145,9 @@ export interface PlotSalePayment {
   createdAt: string
   updatedAt: string
 }
+
+/** Commission paid to the selling agent (same shape as buyer payment lines). */
+export type PlotSaleAgentPayment = PlotSalePayment
 
 export interface Vendor {
   id: string

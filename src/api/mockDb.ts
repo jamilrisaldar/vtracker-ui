@@ -7,6 +7,7 @@ import type {
   CombinedPlotSaleGroup,
   LandPlot,
   PlotSale,
+  PlotSaleAgentPayment,
   PlotSalePayment,
   Payment,
   Phase,
@@ -28,6 +29,7 @@ export interface MockDatabase {
   plotSales: PlotSale[]
   plotSaleGroups: CombinedPlotSaleGroup[]
   plotSalePayments: PlotSalePayment[]
+  plotSaleAgentPayments: PlotSaleAgentPayment[]
   vendors: Vendor[]
   invoices: Invoice[]
   payments: Payment[]
@@ -133,6 +135,7 @@ export function loadDb(): MockDatabase {
       plotSales: parsed.plotSales ?? [],
       plotSaleGroups: parsed.plotSaleGroups ?? [],
       plotSalePayments: parsed.plotSalePayments ?? [],
+      plotSaleAgentPayments: parsed.plotSaleAgentPayments ?? [],
       plots: (parsed.plots ?? []).map((p) => {
         const lp = p as LandPlot
         const merged: LandPlot = {

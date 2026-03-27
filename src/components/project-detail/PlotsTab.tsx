@@ -10,7 +10,6 @@ import {
 } from '../../utils/landPlotDisplay'
 import { PlotAddEditPanel } from '../PlotAddEditPanel'
 import { CombinePlotsSalePanel } from './CombinePlotsSalePanel'
-import { PlotSalePanel } from './PlotSalePanel'
 import { PlotTransactionsView } from './PlotTransactionsView'
 import {
   plotStatusLabel,
@@ -210,7 +209,6 @@ export function PlotsTab({
 }) {
   const [panelMode, setPanelMode] = useState<'add' | 'edit' | null>(null)
   const [panelPlot, setPanelPlot] = useState<LandPlot | null>(null)
-  const [salePanelPlot, setSalePanelPlot] = useState<LandPlot | null>(null)
   const [transactionsPlot, setTransactionsPlot] = useState<LandPlot | null>(null)
   const [copyFromPlot, setCopyFromPlot] = useState<LandPlot | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<LandPlot | null>(null)
@@ -221,7 +219,6 @@ export function PlotsTab({
   >(null)
 
   const openCombinedSaleEditor = (groupId: string) => {
-    setSalePanelPlot(null)
     setCombinePanel({ editGroupId: groupId })
   }
 
@@ -275,41 +272,53 @@ export function PlotsTab({
       {readOnly ? (
         <p className="text-xs text-amber-800/90">View-only: plot changes are disabled.</p>
       ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-medium text-slate-900">Land plots</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Track dimensions (feet), area (regular or irregular four sides), pricing, and sale status.
-          </p>
-          <p className="mt-2 text-sm text-slate-600">
-            <span className="font-medium text-violet-900">Combined sale:</span> when one buyer takes several
-            plots together, use <strong>Combine plots for sale</strong> so they share a single payment
-            history. Those rows show a violet badge in the table.
-          </p>
+      {transactionsPlot ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setTransactionsPlot(null)}
+            className="text-sm font-medium text-teal-700 hover:underline"
+          >
+            ← Back to plots
+          </button>
         </div>
-        {!readOnly && !transactionsPlot ? (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setCopyFromPlot(null)
-                setPanelPlot(null)
-                setPanelMode('add')
-              }}
-              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-            >
-              Add plot
-            </button>
-            <button
-              type="button"
-              onClick={() => setCombinePanel('create')}
-              className="rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900 hover:bg-violet-100"
-            >
-              Combine plots for sale
-            </button>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-medium text-slate-900">Land plots</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Track dimensions (feet), area (regular or irregular four sides), pricing, and sale status.
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              <span className="font-medium text-violet-900">Combined sale:</span> when one buyer takes several
+              plots together, use <strong>Combine plots for sale</strong> so they share a single payment
+              history. Those rows show a violet badge in the table.
+            </p>
           </div>
-        ) : null}
-      </div>
+          {!readOnly ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setCopyFromPlot(null)
+                  setPanelPlot(null)
+                  setPanelMode('add')
+                }}
+                className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+              >
+                Add plot
+              </button>
+              <button
+                type="button"
+                onClick={() => setCombinePanel('create')}
+                className="rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900 hover:bg-violet-100"
+              >
+                Combine plots for sale
+              </button>
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {deleteTarget ? (
         <div className="fixed inset-0 z-[60] bg-slate-900/40" role="dialog" aria-modal="true" aria-labelledby="delete-plot-title">
@@ -379,28 +388,6 @@ export function PlotsTab({
         </div>
       ) : null}
 
-      {salePanelPlot ? (
-        <div className="fixed inset-0 z-[55] bg-slate-900/40">
-          <div className="absolute inset-y-0 right-0 w-full max-w-xl">
-            <PlotSalePanel
-              projectId={projectId}
-              plot={salePanelPlot}
-              projectPlots={plots}
-              readOnly={readOnly}
-              onClose={() => setSalePanelPlot(null)}
-              onRefresh={onRefresh}
-              onError={onError}
-              onViewTransactions={() => {
-                setTransactionsPlot(salePanelPlot)
-                setSalePanelPlot(null)
-              }}
-              onEditCombinedSale={readOnly ? undefined : openCombinedSaleEditor}
-              className="h-full overflow-y-auto p-6 shadow-xl"
-            />
-          </div>
-        </div>
-      ) : null}
-
       {combinePanel ? (
         <div className="fixed inset-0 z-[56] bg-slate-900/40">
           <div className="absolute inset-y-0 right-0 w-full max-w-md">
@@ -442,18 +429,23 @@ export function PlotsTab({
         </div>
       )}
 
-      {transactionsPlot ? (
-        <PlotTransactionsView
-          projectId={projectId}
-          plot={transactionsPlot}
-          projectPlots={plots}
-          readOnly={readOnly}
-          onBack={() => setTransactionsPlot(null)}
-          onOpenSalePanel={() => setSalePanelPlot(transactionsPlot)}
-          onEditCombinedSale={readOnly ? undefined : openCombinedSaleEditor}
-        />
-      ) : (
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        {transactionsPlot ? (
+          <div className="relative p-4 md:p-6">
+            <PlotTransactionsView
+              projectId={projectId}
+              plot={transactionsPlot}
+              projectPlots={plots}
+              readOnly={readOnly}
+              showBackButton={false}
+              onBack={() => setTransactionsPlot(null)}
+              onError={onError}
+              onProjectRefresh={onRefresh}
+              onEditCombinedSale={readOnly ? undefined : openCombinedSaleEditor}
+            />
+          </div>
+        ) : (
+          <>
         <div className="max-h-[min(70vh,28rem)] overflow-auto overscroll-contain">
           <table className="min-w-full text-left text-sm">
             <thead className="text-xs uppercase text-slate-500">
@@ -548,7 +540,7 @@ export function PlotsTab({
                           aria-label="Plot sale and buyer payments"
                           title="Sale & payments"
                           onClick={() => {
-                            setSalePanelPlot(p)
+                            setTransactionsPlot(p)
                           }}
                         >
                           <IconSale className="h-4 w-4" />
@@ -746,8 +738,9 @@ export function PlotsTab({
             </ul>
           </div>
         ) : null}
+          </>
+        )}
       </div>
-      )}
     </div>
   )
 }

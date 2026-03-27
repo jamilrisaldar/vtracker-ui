@@ -19,6 +19,7 @@ import type {
   ProjectDocument,
   CombinedPlotSaleGroup,
   PlotSale,
+  PlotSaleAgentPayment,
   PlotSalePayment,
   ProjectReport,
   ProjectStatus,
@@ -193,6 +194,7 @@ export async function upsertPlotSale(
     stampDutyPrice?: number | null
     agreementPrice?: number | null
     currency?: string
+    paymentsLocked?: boolean
   },
 ): Promise<PlotSale> {
   if (isBackendAuthEnabled()) return backend.upsertPlotSale(plotId, projectId, body)
@@ -247,6 +249,56 @@ export async function deletePlotSalePayment(
     return backend.deletePlotSalePayment(plotId, paymentId, projectId)
   }
   return mock.deletePlotSalePayment(plotId, paymentId, projectId)
+}
+
+export async function listPlotSaleAgentPayments(
+  plotId: string,
+  projectId: string,
+): Promise<PlotSaleAgentPayment[]> {
+  if (isBackendAuthEnabled()) return backend.listPlotSaleAgentPayments(plotId, projectId)
+  return mock.listPlotSaleAgentPayments(plotId, projectId)
+}
+
+export async function createPlotSaleAgentPayment(
+  plotId: string,
+  projectId: string,
+  input: {
+    paymentMode: string
+    paidDate: string
+    amount?: number | null
+    notes?: string | null
+  },
+): Promise<PlotSaleAgentPayment> {
+  if (isBackendAuthEnabled()) return backend.createPlotSaleAgentPayment(plotId, projectId, input)
+  return mock.createPlotSaleAgentPayment(plotId, projectId, input)
+}
+
+export async function updatePlotSaleAgentPayment(
+  plotId: string,
+  agentPaymentId: string,
+  projectId: string,
+  patch: Partial<{
+    paymentMode: string
+    paidDate: string
+    amount: number | null
+    notes: string | null
+  }>,
+): Promise<PlotSaleAgentPayment> {
+  if (isBackendAuthEnabled()) {
+    return backend.updatePlotSaleAgentPayment(plotId, agentPaymentId, projectId, patch)
+  }
+  return mock.updatePlotSaleAgentPayment(plotId, agentPaymentId, projectId, patch)
+}
+
+export async function deletePlotSaleAgentPayment(
+  plotId: string,
+  agentPaymentId: string,
+  projectId: string,
+): Promise<void> {
+  if (isBackendAuthEnabled()) {
+    return backend.deletePlotSaleAgentPayment(plotId, agentPaymentId, projectId)
+  }
+  return mock.deletePlotSaleAgentPayment(plotId, agentPaymentId, projectId)
 }
 
 export async function createCombinedPlotSaleGroup(input: {

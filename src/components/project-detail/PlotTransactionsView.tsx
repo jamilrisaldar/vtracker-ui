@@ -1,208 +1,654 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as api from '../../api/dataApi'
-import type { LandPlot, PlotSale, PlotSalePayment } from '../../types'
+import type { LandPlot, PlotSale, PlotSaleAgentPayment, PlotSalePayment } from '../../types'
 import { MoneyInrShorthand } from '../MoneyInrShorthand'
+import { PencilIcon, TrashIcon, iconBtnClass } from '../accounts/ledgerIcons'
+import { PlotPaymentSheet } from './PlotPaymentSheet'
+import { PlotSaleDetailsSheet } from './PlotSaleDetailsSheet'
 
 export function PlotTransactionsView({
   projectId,
   plot,
   projectPlots,
   onBack,
-  onOpenSalePanel,
+  onError,
+  onProjectRefresh,
   onEditCombinedSale,
   readOnly = false,
+  showBackButton = true,
 }: {
   projectId: string
   plot: LandPlot
   projectPlots: LandPlot[]
   onBack: () => void
-  onOpenSalePanel: () => void
+  onError: (msg: string | null) => void
+  onProjectRefresh?: () => Promise<void>
   onEditCombinedSale?: (groupId: string) => void
   readOnly?: boolean
+  /** When false, parent renders the back control (e.g. PlotsTab top bar). */
+  showBackButton?: boolean
 }) {
   const [sale, setSale] = useState<PlotSale | null>(null)
   const [payments, setPayments] = useState<PlotSalePayment[]>([])
-  const [err, setErr] = useState<string | null>(null)
-  const [busy, setBusy] = useState(true)
+  const [agentPayments, setAgentPayments] = useState<PlotSaleAgentPayment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saleSheetOpen, setSaleSheetOpen] = useState(false)
+
+  const [paymentSheetOpen, setPaymentSheetOpen] = useState(false)
+  const [paymentSheetMode, setPaymentSheetMode] = useState<'add' | 'edit'>('add')
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
+  const [sheetInitialAmount, setSheetInitialAmount] = useState('')
+  const [sheetInitialMode, setSheetInitialMode] = useState('')
+  const [sheetInitialDate, setSheetInitialDate] = useState('')
+  const [sheetInitialNotes, setSheetInitialNotes] = useState('')
+  const [savingPayment, setSavingPayment] = useState(false)
+
+  const [agentSheetOpen, setAgentSheetOpen] = useState(false)
+  const [agentSheetMode, setAgentSheetMode] = useState<'add' | 'edit'>('add')
+  const [editingAgentPaymentId, setEditingAgentPaymentId] = useState<string | null>(null)
+  const [agentSheetInitialAmount, setAgentSheetInitialAmount] = useState('')
+  const [agentSheetInitialMode, setAgentSheetInitialMode] = useState('')
+  const [agentSheetInitialDate, setAgentSheetInitialDate] = useState('')
+  const [agentSheetInitialNotes, setAgentSheetInitialNotes] = useState('')
+  const [savingAgentPayment, setSavingAgentPayment] = useState(false)
 
   const load = useCallback(async () => {
-    setBusy(true)
-    setErr(null)
+    setLoading(true)
+    onError(null)
     try {
-      const [s, p] = await Promise.all([
+      const [s, p, ap] = await Promise.all([
         api.getPlotSale(plot.id, projectId),
         api.listPlotSalePayments(plot.id, projectId),
+        api.listPlotSaleAgentPayments(plot.id, projectId),
       ])
       setSale(s)
       setPayments(p)
+      setAgentPayments(ap)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to load')
+      onError(e instanceof Error ? e.message : 'Failed to load')
     } finally {
-      setBusy(false)
+      setLoading(false)
     }
-  }, [plot.id, projectId])
+  }, [plot.id, projectId, onError])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  const cur = sale?.currency ?? plot.currency
+  useEffect(() => {
+    if (sale?.paymentsLocked === true && paymentSheetOpen) {
+      setPaymentSheetOpen(false)
+      setEditingPaymentId(null)
+    }
+  }, [sale?.paymentsLocked, paymentSheetOpen])
 
-  const combinedLabels =
-    sale?.combinedPlotIds?.map((pid) => {
-      const lp = projectPlots.find((x) => x.id === pid)
-      return lp?.plotNumber?.trim() ? `#${lp.plotNumber.trim()}` : pid.slice(0, 8)
-    }) ?? []
+  useEffect(() => {
+    if (sale?.paymentsLocked === true && agentSheetOpen) {
+      setAgentSheetOpen(false)
+      setEditingAgentPaymentId(null)
+    }
+  }, [sale?.paymentsLocked, agentSheetOpen])
+
+  const currency = sale?.currency || plot.currency || 'INR'
+  const paymentsLocked = sale?.paymentsLocked === true
+  const paymentsReadOnly = readOnly || paymentsLocked
+
+  const plotNumberDisplay = plot.plotNumber?.trim() ? plot.plotNumber.trim() : plot.id.slice(0, 8)
+
+  const buyerPaymentAgg = useMemo(() => {
+    const byMode = new Map<string, number>()
+    let total = 0
+    let linesWithoutAmount = 0
+    for (const p of payments) {
+      const mode = (p.paymentMode ?? '').trim() || '—'
+      const a = p.amount
+      if (a != null && Number.isFinite(a)) {
+        total += a
+        byMode.set(mode, (byMode.get(mode) ?? 0) + a)
+      } else {
+        linesWithoutAmount += 1
+      }
+    }
+    const byModeSorted = [...byMode.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    return { byModeSorted, total, linesWithoutAmount }
+  }, [payments])
+
+  const negotiated = sale?.negotiatedFinalPrice
+  const hasNegotiated = negotiated != null && Number.isFinite(negotiated)
+  const outstanding = hasNegotiated ? negotiated - buyerPaymentAgg.total : null
+
+  const openAddPayment = () => {
+    onError(null)
+    setPaymentSheetMode('add')
+    setEditingPaymentId(null)
+    setSheetInitialAmount('')
+    setSheetInitialMode('')
+    setSheetInitialDate('')
+    setSheetInitialNotes('')
+    setPaymentSheetOpen(true)
+  }
+
+  const openEditPayment = (p: PlotSalePayment) => {
+    onError(null)
+    setPaymentSheetMode('edit')
+    setEditingPaymentId(p.id)
+    setSheetInitialAmount(p.amount != null ? String(p.amount) : '')
+    setSheetInitialMode(p.paymentMode ?? '')
+    setSheetInitialDate(p.paidDate ?? '')
+    setSheetInitialNotes(p.notes ?? '')
+    setPaymentSheetOpen(true)
+  }
+
+  const closePaymentSheet = () => {
+    setPaymentSheetOpen(false)
+    setEditingPaymentId(null)
+  }
+
+  const submitPaymentSheet = async (data: {
+    amount?: number | null
+    paymentMode: string
+    paidDate: string
+    notes?: string | null
+  }) => {
+    setSavingPayment(true)
+    onError(null)
+    try {
+      if (paymentSheetMode === 'add') {
+        const row = await api.createPlotSalePayment(plot.id, projectId, {
+          paymentMode: data.paymentMode,
+          paidDate: data.paidDate,
+          amount: data.amount,
+          notes: data.notes,
+        })
+        setPayments((prev) => [row, ...prev])
+      } else if (editingPaymentId) {
+        const row = await api.updatePlotSalePayment(plot.id, editingPaymentId, projectId, {
+          amount: data.amount ?? null,
+          paymentMode: data.paymentMode,
+          paidDate: data.paidDate,
+          notes: data.notes ?? null,
+        })
+        setPayments((prev) => prev.map((x) => (x.id === row.id ? row : x)))
+      }
+      await onProjectRefresh?.()
+      closePaymentSheet()
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Failed to save payment')
+    } finally {
+      setSavingPayment(false)
+    }
+  }
+
+  const deletePayment = async (id: string) => {
+    if (!window.confirm('Delete this payment line?')) return
+    onError(null)
+    try {
+      await api.deletePlotSalePayment(plot.id, id, projectId)
+      setPayments((prev) => prev.filter((x) => x.id !== id))
+      if (editingPaymentId === id) closePaymentSheet()
+      await onProjectRefresh?.()
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Failed to delete payment')
+    }
+  }
+
+  const openAddAgentPayment = () => {
+    onError(null)
+    setAgentSheetMode('add')
+    setEditingAgentPaymentId(null)
+    setAgentSheetInitialAmount('')
+    setAgentSheetInitialMode('')
+    setAgentSheetInitialDate('')
+    setAgentSheetInitialNotes('')
+    setAgentSheetOpen(true)
+  }
+
+  const openEditAgentPayment = (p: PlotSaleAgentPayment) => {
+    onError(null)
+    setAgentSheetMode('edit')
+    setEditingAgentPaymentId(p.id)
+    setAgentSheetInitialAmount(p.amount != null ? String(p.amount) : '')
+    setAgentSheetInitialMode(p.paymentMode ?? '')
+    setAgentSheetInitialDate(p.paidDate ?? '')
+    setAgentSheetInitialNotes(p.notes ?? '')
+    setAgentSheetOpen(true)
+  }
+
+  const closeAgentPaymentSheet = () => {
+    setAgentSheetOpen(false)
+    setEditingAgentPaymentId(null)
+  }
+
+  const submitAgentPaymentSheet = async (data: {
+    amount?: number | null
+    paymentMode: string
+    paidDate: string
+    notes?: string | null
+  }) => {
+    setSavingAgentPayment(true)
+    onError(null)
+    try {
+      if (agentSheetMode === 'add') {
+        const row = await api.createPlotSaleAgentPayment(plot.id, projectId, {
+          paymentMode: data.paymentMode,
+          paidDate: data.paidDate,
+          amount: data.amount,
+          notes: data.notes,
+        })
+        setAgentPayments((prev) => [row, ...prev])
+      } else if (editingAgentPaymentId) {
+        const row = await api.updatePlotSaleAgentPayment(
+          plot.id,
+          editingAgentPaymentId,
+          projectId,
+          {
+            amount: data.amount ?? null,
+            paymentMode: data.paymentMode,
+            paidDate: data.paidDate,
+            notes: data.notes ?? null,
+          },
+        )
+        setAgentPayments((prev) => prev.map((x) => (x.id === row.id ? row : x)))
+      }
+      await onProjectRefresh?.()
+      closeAgentPaymentSheet()
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Failed to save agent payment')
+    } finally {
+      setSavingAgentPayment(false)
+    }
+  }
+
+  const deleteAgentPayment = async (id: string) => {
+    if (!window.confirm('Delete this agent payment line?')) return
+    onError(null)
+    try {
+      await api.deletePlotSaleAgentPayment(plot.id, id, projectId)
+      setAgentPayments((prev) => prev.filter((x) => x.id !== id))
+      if (editingAgentPaymentId === id) closeAgentPaymentSheet()
+      await onProjectRefresh?.()
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Failed to delete agent payment')
+    }
+  }
+
+  const buyerColCount = paymentsReadOnly ? 4 : 6
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            ← Back to plots
-          </button>
-          <div>
-            <h2 className="text-lg font-medium text-slate-900">Plot payment transactions</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              {sale?.combinedGroupId ? (
-                <>
-                  Combined sale — viewing from plot{' '}
-                  {plot.plotNumber?.trim() ? `#${plot.plotNumber.trim()}` : plot.id.slice(0, 8)}
-                </>
-              ) : (
-                <>
-                  Plot {plot.plotNumber?.trim() ? `#${plot.plotNumber.trim()}` : plot.id.slice(0, 8)}
-                </>
-              )}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {!readOnly && sale?.combinedGroupId && onEditCombinedSale ? (
+    <div className="relative min-h-[min(70vh,28rem)]">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+        <div>
+          {showBackButton ? (
             <button
               type="button"
-              onClick={() => onEditCombinedSale(sale.combinedGroupId!)}
-              className="rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900 hover:bg-violet-100"
+              onClick={onBack}
+              className="text-sm font-medium text-teal-700 hover:underline"
             >
-              Combined plots…
+              ← Back to plots
             </button>
           ) : null}
+          <div
+            className={`flex flex-wrap items-baseline gap-x-2 gap-y-1 ${showBackButton ? 'mt-2' : ''}`}
+          >
+            <h2 className="text-xl font-semibold text-slate-900">
+              Plot payment transactions
+              <span className="font-semibold text-slate-600"> · </span>
+              <span className="font-semibold text-slate-900">{plotNumberDisplay}</span>
+            </h2>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Buyer and agent payment lines for this plot.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           {!readOnly ? (
             <button
               type="button"
-              onClick={onOpenSalePanel}
-              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+              onClick={() => setSaleSheetOpen(true)}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
             >
-              Edit sale &amp; payments
+              Edit purchaser &amp; sale…
             </button>
           ) : null}
         </div>
       </div>
 
-      {sale?.combinedGroupId ? (
-        <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950">
-          <p className="font-medium">These payments apply to every plot in this combined sale.</p>
-          {combinedLabels.length > 0 ? (
-            <p className="mt-2 font-mono text-xs">Plots: {combinedLabels.join(' · ')}</p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {err ? (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{err}</p>
-      ) : null}
-
-      {busy ? (
-        <p className="text-sm text-slate-500">Loading…</p>
+      {loading ? (
+        <p className="mt-6 text-sm text-slate-500">Loading…</p>
       ) : (
-        <>
-          {sale ? (
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-900">Sale summary</h3>
-              <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-                {sale.purchaserName ? (
-                  <>
-                    <dt className="text-slate-500">Purchaser</dt>
-                    <dd className="font-medium text-slate-900">{sale.purchaserName}</dd>
-                  </>
-                ) : null}
-                {sale.negotiatedFinalPrice != null ? (
-                  <>
-                    <dt className="text-slate-500">Negotiated final price</dt>
-                    <dd className="tabular-nums font-medium">
-                      <MoneyInrShorthand amount={sale.negotiatedFinalPrice} currency={cur} />
+        <div className="mt-6 space-y-8">
+          {sale?.combinedGroupId ? (
+            <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950">
+              <p className="font-semibold">Combined sale</p>
+              <p className="mt-1 text-violet-900/90">
+                Payments below are shared across this deal ({sale.combinedPlotIds?.length ?? 0}{' '}
+                plots).
+              </p>
+              {sale.combinedDisplayName?.trim() ? (
+                <p className="mt-1 text-xs text-violet-800">Label: {sale.combinedDisplayName.trim()}</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {paymentsLocked && !readOnly ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <p className="font-semibold">Payment transactions locked</p>
+              <p className="mt-1 text-amber-900/90">
+                Open <strong>Edit purchaser &amp; sale…</strong> and turn off &quot;Lock payment
+                edits&quot; to change payment lines.
+              </p>
+            </div>
+          ) : null}
+
+          <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 md:p-5">
+            <h3 className="text-sm font-semibold text-slate-900">Sale summary</h3>
+            <dl className="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-slate-500">Purchaser</dt>
+                <dd className="mt-0.5 font-medium text-slate-900">{sale?.purchaserName?.trim() || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Negotiated final</dt>
+                <dd className="mt-0.5 font-medium tabular-nums text-slate-900">
+                  <MoneyInrShorthand amount={sale?.negotiatedFinalPrice ?? null} currency={currency} />
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Agent commission</dt>
+                <dd className="mt-0.5 font-medium text-slate-900">
+                  {sale?.agentCommissionPercent != null
+                    ? `${sale.agentCommissionPercent}%`
+                    : '—'}{' '}
+                  /{' '}
+                  <MoneyInrShorthand
+                    amount={sale?.agentCommissionAmount ?? null}
+                    currency={currency}
+                    className="tabular-nums"
+                  />
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Stamp duty / Agreement</dt>
+                <dd className="mt-0.5 font-medium tabular-nums text-slate-900">
+                  <MoneyInrShorthand amount={sale?.stampDutyPrice ?? null} currency={currency} /> /{' '}
+                  <MoneyInrShorthand amount={sale?.agreementPrice ?? null} currency={currency} />
+                </dd>
+              </div>
+            </dl>
+
+            <div className="mt-4 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm md:px-4 md:py-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Payment summary
+              </h4>
+              <dl className="mt-2 text-sm">
+                <div>
+                  <dt className="text-slate-500">Buyer payments by mode</dt>
+                  <dd className="mt-1">
+                    {buyerPaymentAgg.byModeSorted.length === 0 ? (
+                      <span className="text-slate-600">No amounts recorded by mode yet.</span>
+                    ) : (
+                      <ul className="divide-y divide-slate-100">
+                        {buyerPaymentAgg.byModeSorted.map(([mode, amt]) => (
+                          <li
+                            key={mode}
+                            className="flex justify-between gap-3 py-0.5 text-sm leading-tight first:pt-0"
+                          >
+                            <span className="text-slate-800">{mode}</span>
+                            <span className="shrink-0 tabular-nums font-medium text-slate-900">
+                              <MoneyInrShorthand amount={amt} currency={currency} />
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {buyerPaymentAgg.linesWithoutAmount > 0 ? (
+                      <p className="mt-1.5 text-xs text-amber-800/90">
+                        {buyerPaymentAgg.linesWithoutAmount} line
+                        {buyerPaymentAgg.linesWithoutAmount === 1 ? '' : 's'} missing an amount (excluded
+                        from totals).
+                      </p>
+                    ) : null}
+                  </dd>
+                </div>
+                <div className="mt-2 grid gap-3 border-t border-slate-200 pt-2 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-slate-500">Total buyer payments</dt>
+                    <dd className="mt-0.5 text-base font-semibold tabular-nums text-slate-900">
+                      <MoneyInrShorthand amount={buyerPaymentAgg.total} currency={currency} />
                     </dd>
-                  </>
-                ) : null}
-                {sale.stampDutyPrice != null ? (
-                  <>
-                    <dt className="text-slate-500">Stamp duty</dt>
-                    <dd className="tabular-nums">
-                      <MoneyInrShorthand amount={sale.stampDutyPrice} currency={cur} />
+                  </div>
+                  <div>
+                    <dt className="text-slate-500">Outstanding to close sale</dt>
+                    <dd
+                      className={`mt-0.5 text-base font-semibold tabular-nums ${
+                        !hasNegotiated
+                          ? 'text-slate-500'
+                          : outstanding != null && outstanding > 0
+                            ? 'text-amber-800'
+                            : outstanding != null && outstanding < 0
+                              ? 'text-emerald-800'
+                              : 'text-slate-900'
+                      }`}
+                    >
+                      {!hasNegotiated ? (
+                        'Set negotiated final price to compute'
+                      ) : (
+                        <MoneyInrShorthand amount={outstanding} currency={currency} />
+                      )}
                     </dd>
-                  </>
-                ) : null}
-                {sale.agreementPrice != null ? (
-                  <>
-                    <dt className="text-slate-500">Agreement price</dt>
-                    <dd className="tabular-nums">
-                      <MoneyInrShorthand amount={sale.agreementPrice} currency={cur} />
-                    </dd>
-                  </>
-                ) : null}
+                  </div>
+                </div>
               </dl>
             </div>
-          ) : (
-            <p className="text-sm text-slate-600">
-              No sale record saved yet. Use &quot;Edit sale &amp; payments&quot; to add details.
-            </p>
-          )}
+          </section>
 
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-              <h3 className="text-sm font-semibold text-slate-900">Payments</h3>
+          <section>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-slate-900">Buyer payment lines</h3>
+              {!paymentsReadOnly ? (
+                <button
+                  type="button"
+                  onClick={openAddPayment}
+                  className="shrink-0 rounded-lg bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700"
+                >
+                  Add payment…
+                </button>
+              ) : null}
             </div>
-            {payments.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-slate-500">No payment lines yet.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="text-xs uppercase text-slate-500">
+            <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                  <tr>
+                    {!paymentsReadOnly ? (
+                      <th className="w-12 px-2 py-2 text-center" scope="col">
+                        <span className="sr-only">Edit</span>
+                      </th>
+                    ) : null}
+                    <th className="px-3 py-2 text-right tabular-nums">Amount</th>
+                    <th className="px-3 py-2">Mode</th>
+                    <th className="px-3 py-2">Date</th>
+                    <th className="px-3 py-2">Notes</th>
+                    {!paymentsReadOnly ? (
+                      <th className="w-12 px-2 py-2 text-center" scope="col">
+                        <span className="sr-only">Delete</span>
+                      </th>
+                    ) : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.length === 0 ? (
                     <tr>
-                      <th className="px-4 py-3">Date</th>
-                      <th className="px-4 py-3">Mode</th>
-                      <th className="px-4 py-3 text-right">Amount</th>
-                      <th className="px-4 py-3">Notes</th>
+                      <td colSpan={buyerColCount} className="px-3 py-6 text-center text-slate-500">
+                        No payments yet.
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {payments.map((p) => (
+                  ) : (
+                    payments.map((p) => (
                       <tr key={p.id} className="border-t border-slate-100">
-                        <td className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-800">
-                          {p.paidDate}
+                        {!paymentsReadOnly ? (
+                          <td className="px-2 py-2 text-center align-middle">
+                            <button
+                              type="button"
+                              className={iconBtnClass('neutral')}
+                              aria-label="Edit payment"
+                              onClick={() => openEditPayment(p)}
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
+                          </td>
+                        ) : null}
+                        <td className="px-3 py-2 text-right font-medium tabular-nums">
+                          <MoneyInrShorthand amount={p.amount ?? null} currency={currency} />
                         </td>
-                        <td className="px-4 py-3 text-slate-800">{p.paymentMode}</td>
-                        <td className="px-4 py-3 text-right tabular-nums">
-                          {p.amount != null ? (
-                            <MoneyInrShorthand amount={p.amount} currency={cur} />
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                        <td className="max-w-md px-4 py-3 text-slate-600">{p.notes ?? '—'}</td>
+                        <td className="px-3 py-2">{p.paymentMode?.trim() || '—'}</td>
+                        <td className="px-3 py-2">{p.paidDate?.trim() || '—'}</td>
+                        <td className="px-3 py-2 text-slate-600">{p.notes?.trim() || '—'}</td>
+                        {!paymentsReadOnly ? (
+                          <td className="px-2 py-2 text-center align-middle">
+                            <button
+                              type="button"
+                              className={iconBtnClass('danger')}
+                              aria-label="Delete payment"
+                              onClick={() => void deletePayment(p.id)}
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </td>
+                        ) : null}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-slate-900">Agent commission payments</h3>
+              {!paymentsReadOnly ? (
+                <button
+                  type="button"
+                  onClick={openAddAgentPayment}
+                  className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50"
+                >
+                  Add agent payment…
+                </button>
+              ) : null}
+            </div>
+            <p className="mt-1 text-xs text-slate-600">
+              Record amounts paid to the selling agent (date, mode, amount, notes).
+            </p>
+            <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                  <tr>
+                    {!paymentsReadOnly ? (
+                      <th className="w-12 px-2 py-2 text-center" scope="col">
+                        <span className="sr-only">Edit</span>
+                      </th>
+                    ) : null}
+                    <th className="px-3 py-2 text-right tabular-nums">Amount</th>
+                    <th className="px-3 py-2">Mode</th>
+                    <th className="px-3 py-2">Date</th>
+                    <th className="px-3 py-2">Notes</th>
+                    {!paymentsReadOnly ? (
+                      <th className="w-12 px-2 py-2 text-center" scope="col">
+                        <span className="sr-only">Delete</span>
+                      </th>
+                    ) : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {agentPayments.length === 0 ? (
+                    <tr>
+                      <td colSpan={buyerColCount} className="px-3 py-6 text-center text-slate-500">
+                        No agent payments recorded.
+                      </td>
+                    </tr>
+                  ) : (
+                    agentPayments.map((p) => (
+                      <tr key={p.id} className="border-t border-slate-100">
+                        {!paymentsReadOnly ? (
+                          <td className="px-2 py-2 text-center align-middle">
+                            <button
+                              type="button"
+                              className={iconBtnClass('neutral')}
+                              aria-label="Edit agent payment"
+                              onClick={() => openEditAgentPayment(p)}
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
+                          </td>
+                        ) : null}
+                        <td className="px-3 py-2 text-right font-medium tabular-nums">
+                          <MoneyInrShorthand amount={p.amount ?? null} currency={currency} />
+                        </td>
+                        <td className="px-3 py-2">{p.paymentMode?.trim() || '—'}</td>
+                        <td className="px-3 py-2">{p.paidDate?.trim() || '—'}</td>
+                        <td className="px-3 py-2 text-slate-600">{p.notes?.trim() || '—'}</td>
+                        {!paymentsReadOnly ? (
+                          <td className="px-2 py-2 text-center align-middle">
+                            <button
+                              type="button"
+                              className={iconBtnClass('danger')}
+                              aria-label="Delete agent payment"
+                              onClick={() => void deleteAgentPayment(p.id)}
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </td>
+                        ) : null}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       )}
+
+      <PlotPaymentSheet
+        open={paymentSheetOpen}
+        onClose={closePaymentSheet}
+        title={paymentSheetMode === 'add' ? 'Add buyer payment' : 'Edit buyer payment'}
+        submitLabel={paymentSheetMode === 'add' ? 'Add payment' : 'Save changes'}
+        saving={savingPayment}
+        initialAmount={sheetInitialAmount}
+        initialMode={sheetInitialMode}
+        initialPaidDate={sheetInitialDate}
+        initialNotes={sheetInitialNotes}
+        onSubmit={submitPaymentSheet}
+        readOnly={paymentsReadOnly}
+      />
+
+      <PlotPaymentSheet
+        open={agentSheetOpen}
+        onClose={closeAgentPaymentSheet}
+        title={agentSheetMode === 'add' ? 'Add agent payment' : 'Edit agent payment'}
+        submitLabel={agentSheetMode === 'add' ? 'Add payment' : 'Save changes'}
+        saving={savingAgentPayment}
+        initialAmount={agentSheetInitialAmount}
+        initialMode={agentSheetInitialMode}
+        initialPaidDate={agentSheetInitialDate}
+        initialNotes={agentSheetInitialNotes}
+        onSubmit={submitAgentPaymentSheet}
+        readOnly={paymentsReadOnly}
+      />
+
+      <PlotSaleDetailsSheet
+        open={saleSheetOpen}
+        onClose={() => setSaleSheetOpen(false)}
+        projectId={projectId}
+        plot={plot}
+        projectPlots={projectPlots}
+        sale={sale}
+        onSaved={setSale}
+        onRefresh={load}
+        onProjectRefresh={onProjectRefresh}
+        onError={onError}
+        onEditCombinedSale={onEditCombinedSale}
+        readOnly={readOnly}
+      />
     </div>
   )
 }

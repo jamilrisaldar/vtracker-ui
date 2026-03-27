@@ -11,6 +11,7 @@ import type {
   CombinedPlotSaleGroup,
   LandPlot,
   PlotSale,
+  PlotSaleAgentPayment,
   PlotSalePayment,
   Payment,
   Phase,
@@ -75,7 +76,10 @@ function mockSubstantivePlotSale(s: PlotSale): boolean {
 }
 
 function mockPlotHasSoloPayments(db: MockDatabase, plotId: string): boolean {
-  return db.plotSalePayments.some((p) => p.plotId === plotId)
+  return (
+    db.plotSalePayments.some((p) => p.plotId === plotId) ||
+    db.plotSaleAgentPayments.some((p) => p.plotId === plotId)
+  )
 }
 
 function plotNumberLabelsFromIds(
@@ -574,6 +578,10 @@ export async function deletePlot(plotId: string, projectId: string): Promise<voi
     (p) =>
       p.plotId !== plotId && (p.saleGroupId == null || !dissolved.has(p.saleGroupId)),
   )
+  db.plotSaleAgentPayments = db.plotSaleAgentPayments.filter(
+    (p) =>
+      p.plotId !== plotId && (p.saleGroupId == null || !dissolved.has(p.saleGroupId)),
+  )
   proj.updatedAt = nowIso()
   saveDb(db)
 }
@@ -591,12 +599,20 @@ function mockPlotSaleFromGroup(g: CombinedPlotSaleGroup, anchorPlotId: string): 
     stampDutyPrice: g.stampDutyPrice,
     agreementPrice: g.agreementPrice,
     currency: g.currency,
+    paymentsLocked: g.paymentsLocked === true,
     createdAt: g.createdAt,
     updatedAt: g.updatedAt,
     combinedGroupId: g.id,
     combinedDisplayName: g.displayName,
     combinedPlotIds: [...g.plotIds],
   }
+}
+
+function mockPlotPaymentsLocked(db: MockDatabase, projectId: string, plotId: string): boolean {
+  const g = mockFindSaleGroup(db, projectId, plotId)
+  if (g) return g.paymentsLocked === true
+  const s = db.plotSales.find((x) => x.plotId === plotId)
+  return s?.paymentsLocked === true
 }
 
 export async function getPlotSale(plotId: string, projectId: string): Promise<PlotSale | null> {
@@ -621,6 +637,7 @@ export async function upsertPlotSale(
     stampDutyPrice?: number | null
     agreementPrice?: number | null
     currency?: string
+    paymentsLocked?: boolean
   },
 ): Promise<PlotSale> {
   await delay()
@@ -631,50 +648,62 @@ export async function upsertPlotSale(
   const proj = db.projects.find((p) => p.id === projectId)
   if (!proj) throw new Error('Not found')
   const ts = nowIso()
-  const cur = body.currency?.trim() || plot.currency || 'INR'
   const g = mockFindSaleGroup(db, projectId, plotId)
   if (g) {
-    g.purchaserName = body.purchaserName?.trim() || undefined
-    g.negotiatedFinalPrice = body.negotiatedFinalPrice ?? undefined
-    g.agentCommissionPercent = body.agentCommissionPercent ?? undefined
-    g.agentCommissionAmount = body.agentCommissionAmount ?? undefined
-    g.stampDutyPrice = body.stampDutyPrice ?? undefined
-    g.agreementPrice = body.agreementPrice ?? undefined
-    g.currency = cur
+    if ('purchaserName' in body) g.purchaserName = body.purchaserName?.trim() || undefined
+    if ('negotiatedFinalPrice' in body) g.negotiatedFinalPrice = body.negotiatedFinalPrice ?? undefined
+    if ('agentCommissionPercent' in body) g.agentCommissionPercent = body.agentCommissionPercent ?? undefined
+    if ('agentCommissionAmount' in body) g.agentCommissionAmount = body.agentCommissionAmount ?? undefined
+    if ('stampDutyPrice' in body) g.stampDutyPrice = body.stampDutyPrice ?? undefined
+    if ('agreementPrice' in body) g.agreementPrice = body.agreementPrice ?? undefined
+    if ('currency' in body) g.currency = body.currency?.trim() || plot.currency || 'INR'
+    if ('paymentsLocked' in body) g.paymentsLocked = Boolean(body.paymentsLocked)
     g.updatedAt = ts
     proj.updatedAt = ts
     saveDb(db)
     return mockPlotSaleFromGroup(g, plotId)
   }
   const idx = db.plotSales.findIndex((s) => s.plotId === plotId)
-  const row: PlotSale =
-    idx >= 0
-      ? {
-          ...db.plotSales[idx],
-          purchaserName: body.purchaserName?.trim() || undefined,
-          negotiatedFinalPrice: body.negotiatedFinalPrice ?? undefined,
-          agentCommissionPercent: body.agentCommissionPercent ?? undefined,
-          agentCommissionAmount: body.agentCommissionAmount ?? undefined,
-          stampDutyPrice: body.stampDutyPrice ?? undefined,
-          agreementPrice: body.agreementPrice ?? undefined,
-          currency: cur,
-          updatedAt: ts,
-        }
-      : {
-          id: id('plotsale'),
-          plotId,
-          purchaserName: body.purchaserName?.trim() || undefined,
-          negotiatedFinalPrice: body.negotiatedFinalPrice ?? undefined,
-          agentCommissionPercent: body.agentCommissionPercent ?? undefined,
-          agentCommissionAmount: body.agentCommissionAmount ?? undefined,
-          stampDutyPrice: body.stampDutyPrice ?? undefined,
-          agreementPrice: body.agreementPrice ?? undefined,
-          currency: cur,
-          createdAt: ts,
-          updatedAt: ts,
-        }
-  if (idx >= 0) db.plotSales[idx] = row
-  else db.plotSales.push(row)
+  if (idx >= 0) {
+    const cur = 'currency' in body ? body.currency?.trim() || plot.currency || 'INR' : undefined
+    const prev = db.plotSales[idx]
+    const row: PlotSale = { ...prev }
+    if ('purchaserName' in body) row.purchaserName = body.purchaserName?.trim() || undefined
+    if ('negotiatedFinalPrice' in body) row.negotiatedFinalPrice = body.negotiatedFinalPrice ?? undefined
+    if ('agentCommissionPercent' in body) row.agentCommissionPercent = body.agentCommissionPercent ?? undefined
+    if ('agentCommissionAmount' in body) row.agentCommissionAmount = body.agentCommissionAmount ?? undefined
+    if ('stampDutyPrice' in body) row.stampDutyPrice = body.stampDutyPrice ?? undefined
+    if ('agreementPrice' in body) row.agreementPrice = body.agreementPrice ?? undefined
+    if ('currency' in body && cur !== undefined) row.currency = cur
+    if ('paymentsLocked' in body) row.paymentsLocked = Boolean(body.paymentsLocked)
+    row.updatedAt = ts
+    db.plotSales[idx] = row
+    proj.updatedAt = ts
+    saveDb(db)
+    return row
+  }
+  const row: PlotSale = {
+    id: id('plotsale'),
+    plotId,
+    purchaserName:
+      'purchaserName' in body ? body.purchaserName?.trim() || undefined : undefined,
+    negotiatedFinalPrice:
+      'negotiatedFinalPrice' in body ? body.negotiatedFinalPrice ?? undefined : undefined,
+    agentCommissionPercent:
+      'agentCommissionPercent' in body ? body.agentCommissionPercent ?? undefined : undefined,
+    agentCommissionAmount:
+      'agentCommissionAmount' in body ? body.agentCommissionAmount ?? undefined : undefined,
+    stampDutyPrice: 'stampDutyPrice' in body ? body.stampDutyPrice ?? undefined : undefined,
+    agreementPrice: 'agreementPrice' in body ? body.agreementPrice ?? undefined : undefined,
+    currency:
+      'currency' in body
+        ? body.currency?.trim() || plot.currency || 'INR'
+        : plot.currency || 'INR',
+    paymentsLocked: 'paymentsLocked' in body ? Boolean(body.paymentsLocked) : false,
+    createdAt: ts,
+    updatedAt: ts,
+  }
+  db.plotSales.push(row)
   proj.updatedAt = ts
   saveDb(db)
   return row
@@ -716,6 +745,9 @@ export async function createPlotSalePayment(
   const proj = db.projects.find((p) => p.id === projectId)
   if (!proj) throw new Error('Not found')
   const ts = nowIso()
+  if (mockPlotPaymentsLocked(db, projectId, plotId)) {
+    throw new Error('Payment transactions are locked for this sale.')
+  }
   const g = mockFindSaleGroup(db, projectId, plotId)
   const pay: PlotSalePayment = {
     id: id('plotpay'),
@@ -738,7 +770,7 @@ function mockPaymentMatchesPlot(
   db: MockDatabase,
   projectId: string,
   plotId: string,
-  p: PlotSalePayment,
+  p: PlotSalePayment | PlotSaleAgentPayment,
 ): boolean {
   if (p.plotId === plotId) return true
   if (p.saleGroupId == null) return false
@@ -768,6 +800,9 @@ export async function updatePlotSalePayment(
     (p) => p.id === paymentId && mockPaymentMatchesPlot(db, projectId, plotId, p),
   )
   if (!pay) throw new Error('Not found')
+  if (mockPlotPaymentsLocked(db, projectId, plotId)) {
+    throw new Error('Payment transactions are locked for this sale.')
+  }
   const ts = nowIso()
   if (patch.paymentMode !== undefined) pay.paymentMode = patch.paymentMode.trim()
   if (patch.paidDate !== undefined) pay.paidDate = patch.paidDate.slice(0, 10)
@@ -791,6 +826,9 @@ export async function deletePlotSalePayment(
   if (!plot) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === projectId)
   if (!proj) throw new Error('Not found')
+  if (mockPlotPaymentsLocked(db, projectId, plotId)) {
+    throw new Error('Payment transactions are locked for this sale.')
+  }
   const before = db.plotSalePayments.length
   db.plotSalePayments = db.plotSalePayments.filter(
     (p) =>
@@ -800,6 +838,127 @@ export async function deletePlotSalePayment(
       ),
   )
   if (db.plotSalePayments.length === before) throw new Error('Not found')
+  proj.updatedAt = nowIso()
+  saveDb(db)
+}
+
+export async function listPlotSaleAgentPayments(
+  plotId: string,
+  projectId: string,
+): Promise<PlotSaleAgentPayment[]> {
+  await delay()
+  if (!(await getProject(projectId))) throw new Error('Not found')
+  const db = loadDb()
+  const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
+  if (!plot) throw new Error('Not found')
+  const g = mockFindSaleGroup(db, projectId, plotId)
+  const list = g
+    ? db.plotSaleAgentPayments.filter((p) => p.saleGroupId === g.id)
+    : db.plotSaleAgentPayments.filter((p) => p.plotId === plotId)
+  return list.sort(
+    (a, b) => b.paidDate.localeCompare(a.paidDate) || b.createdAt.localeCompare(a.createdAt),
+  )
+}
+
+export async function createPlotSaleAgentPayment(
+  plotId: string,
+  projectId: string,
+  input: {
+    paymentMode: string
+    paidDate: string
+    amount?: number | null
+    notes?: string | null
+  },
+): Promise<PlotSaleAgentPayment> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
+  if (!plot) throw new Error('Not found')
+  const proj = db.projects.find((p) => p.id === projectId)
+  if (!proj) throw new Error('Not found')
+  if (mockPlotPaymentsLocked(db, projectId, plotId)) {
+    throw new Error('Payment transactions are locked for this sale.')
+  }
+  const ts = nowIso()
+  const g = mockFindSaleGroup(db, projectId, plotId)
+  const pay: PlotSaleAgentPayment = {
+    id: id('plotagpay'),
+    plotId: g ? undefined : plotId,
+    saleGroupId: g?.id,
+    paymentMode: input.paymentMode.trim(),
+    paidDate: input.paidDate.slice(0, 10),
+    amount: input.amount ?? undefined,
+    notes: input.notes?.trim() || undefined,
+    createdAt: ts,
+    updatedAt: ts,
+  }
+  db.plotSaleAgentPayments.push(pay)
+  proj.updatedAt = ts
+  saveDb(db)
+  return pay
+}
+
+export async function updatePlotSaleAgentPayment(
+  plotId: string,
+  agentPaymentId: string,
+  projectId: string,
+  patch: Partial<{
+    paymentMode: string
+    paidDate: string
+    amount: number | null
+    notes: string | null
+  }>,
+): Promise<PlotSaleAgentPayment> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
+  if (!plot) throw new Error('Not found')
+  const proj = db.projects.find((p) => p.id === projectId)
+  if (!proj) throw new Error('Not found')
+  if (mockPlotPaymentsLocked(db, projectId, plotId)) {
+    throw new Error('Payment transactions are locked for this sale.')
+  }
+  const pay = db.plotSaleAgentPayments.find(
+    (p) => p.id === agentPaymentId && mockPaymentMatchesPlot(db, projectId, plotId, p),
+  )
+  if (!pay) throw new Error('Not found')
+  const ts = nowIso()
+  if (patch.paymentMode !== undefined) pay.paymentMode = patch.paymentMode.trim()
+  if (patch.paidDate !== undefined) pay.paidDate = patch.paidDate.slice(0, 10)
+  if (patch.amount !== undefined) pay.amount = patch.amount ?? undefined
+  if (patch.notes !== undefined) pay.notes = patch.notes?.trim() || undefined
+  pay.updatedAt = ts
+  proj.updatedAt = ts
+  saveDb(db)
+  return pay
+}
+
+export async function deletePlotSaleAgentPayment(
+  plotId: string,
+  agentPaymentId: string,
+  projectId: string,
+): Promise<void> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
+  if (!plot) throw new Error('Not found')
+  const proj = db.projects.find((p) => p.id === projectId)
+  if (!proj) throw new Error('Not found')
+  if (mockPlotPaymentsLocked(db, projectId, plotId)) {
+    throw new Error('Payment transactions are locked for this sale.')
+  }
+  const before = db.plotSaleAgentPayments.length
+  db.plotSaleAgentPayments = db.plotSaleAgentPayments.filter(
+    (p) =>
+      !(
+        p.id === agentPaymentId &&
+        mockPaymentMatchesPlot(db, projectId, plotId, p)
+      ),
+  )
+  if (db.plotSaleAgentPayments.length === before) throw new Error('Not found')
   proj.updatedAt = nowIso()
   saveDb(db)
 }
@@ -837,6 +996,7 @@ export async function createCombinedPlotSaleGroup(input: {
     displayName: input.displayName?.trim() ?? '',
     plotIds: ids,
     currency: 'INR',
+    paymentsLocked: false,
     createdAt: ts,
     updatedAt: ts,
   }
@@ -924,6 +1084,7 @@ export async function deleteCombinedPlotSaleGroup(
   )
   if (db.plotSaleGroups.length === before) throw new Error('Not found')
   db.plotSalePayments = db.plotSalePayments.filter((p) => p.saleGroupId !== groupId)
+  db.plotSaleAgentPayments = db.plotSaleAgentPayments.filter((p) => p.saleGroupId !== groupId)
   const proj = db.projects.find((p) => p.id === projectId)
   if (proj) proj.updatedAt = nowIso()
   saveDb(db)

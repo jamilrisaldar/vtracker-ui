@@ -17,4 +17,6 @@ alwaysApply: true
 - Ensure all processes that are started during executing a prompt are properly terminated.
 - Anywhere currency field is used default to INR (Indian Rupee)
 - When display currency information, ensure correct currency symbol is used
+- When adding table action buttons such as Edit, Delete or add, always use icon buttons. All action buttons should be the first column and delete button should be the last column.
+- All delete confirmations should display modal confirmation dialog with one piece of information for user to type as confirmation.
 
