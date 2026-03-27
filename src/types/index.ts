@@ -82,6 +82,65 @@ export interface LandPlot {
   isPublicUse: boolean
   createdAt: string
   updatedAt: string
+  /** Present when this plot is part of a multi-plot deal with shared buyer payments. */
+  combinedSale?: {
+    groupId: string
+    displayName: string
+    plotCount: number
+    /** Comma-separated plot numbers in the group (for tooltips). */
+    plotNumbersSummary?: string
+  }
+}
+
+/** Recorded sale terms for a plot (optional; one per plot). */
+export interface PlotSale {
+  id: string
+  plotId: string
+  purchaserName?: string
+  negotiatedFinalPrice?: number
+  agentCommissionPercent?: number
+  agentCommissionAmount?: number
+  stampDutyPrice?: number
+  agreementPrice?: number
+  currency: string
+  createdAt: string
+  updatedAt: string
+  /** Set when sale + payments are shared across multiple plots. */
+  combinedGroupId?: string
+  combinedDisplayName?: string
+  combinedPlotIds?: string[]
+}
+
+/** Multi-plot combined buyer deal (shared sale line + one payment history). */
+export interface CombinedPlotSaleGroup {
+  id: string
+  projectId: string
+  displayName: string
+  plotIds: string[]
+  purchaserName?: string
+  negotiatedFinalPrice?: number
+  agentCommissionPercent?: number
+  agentCommissionAmount?: number
+  stampDutyPrice?: number
+  agreementPrice?: number
+  currency: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** Buyer payment toward a plot sale. */
+export interface PlotSalePayment {
+  id: string
+  /** Set for a standalone plot payment. */
+  plotId?: string
+  /** Set for a combined multi-plot payment. */
+  saleGroupId?: string
+  paymentMode: string
+  paidDate: string
+  amount?: number
+  notes?: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Vendor {

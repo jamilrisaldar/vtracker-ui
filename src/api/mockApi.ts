@@ -8,7 +8,10 @@ import type {
   DocumentKind,
   Invoice,
   InvoiceStatus,
+  CombinedPlotSaleGroup,
   LandPlot,
+  PlotSale,
+  PlotSalePayment,
   Payment,
   Phase,
   PhaseStatus,
@@ -30,10 +33,50 @@ import {
   readAuthSession,
   saveDb,
   writeAuthSession,
+  type MockDatabase,
 } from './mockDb'
 import { getApiSessionUserId } from './apiAuthState'
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms))
+
+function mockFindSaleGroup(
+  db: MockDatabase,
+  projectId: string,
+  plotId: string,
+): CombinedPlotSaleGroup | undefined {
+  return db.plotSaleGroups.find((g) => g.projectId === projectId && g.plotIds.includes(plotId))
+}
+
+function mockEnrichPlot(db: MockDatabase, p: LandPlot): LandPlot {
+  const g = mockFindSaleGroup(db, p.projectId, p.id)
+  if (!g) return { ...p }
+  const labels = g.plotIds
+    .map((pid) => db.plots.find((x) => x.id === pid)?.plotNumber?.trim())
+    .filter((x): x is string => !!x && x.length > 0)
+  return {
+    ...p,
+    combinedSale: {
+      groupId: g.id,
+      displayName: g.displayName,
+      plotCount: g.plotIds.length,
+      plotNumbersSummary: labels.length ? [...labels].sort().join(', ') : undefined,
+    },
+  }
+}
+
+function mockSubstantivePlotSale(s: PlotSale): boolean {
+  if (s.purchaserName?.trim()) return true
+  if (s.negotiatedFinalPrice != null && s.negotiatedFinalPrice !== 0) return true
+  if (s.agentCommissionPercent != null && s.agentCommissionPercent !== 0) return true
+  if (s.agentCommissionAmount != null && s.agentCommissionAmount !== 0) return true
+  if (s.stampDutyPrice != null && s.stampDutyPrice !== 0) return true
+  if (s.agreementPrice != null && s.agreementPrice !== 0) return true
+  return false
+}
+
+function mockPlotHasSoloPayments(db: MockDatabase, plotId: string): boolean {
+  return db.plotSalePayments.some((p) => p.plotId === plotId)
+}
 
 function plotNumberLabelsFromIds(
   plotIds: string[] | undefined,
@@ -366,9 +409,11 @@ export async function deletePhase(phaseId: string, _projectId?: string): Promise
 export async function listPlots(projectId: string): Promise<LandPlot[]> {
   await delay()
   if (!(await getProject(projectId))) throw new Error('Not found')
-  return loadDb()
-    .plots.filter((x) => x.projectId === projectId)
+  const db = loadDb()
+  return db.plots
+    .filter((x) => x.projectId === projectId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map((p) => mockEnrichPlot(db, p))
 }
 
 export async function createPlot(input: {
@@ -504,7 +549,7 @@ export async function updatePlot(
   plot.updatedAt = nowIso()
   proj.updatedAt = nowIso()
   saveDb(db)
-  return plot
+  return mockEnrichPlot(db, plot)
 }
 
 export async function deletePlot(plotId: string, projectId: string): Promise<void> {
@@ -515,8 +560,372 @@ export async function deletePlot(plotId: string, projectId: string): Promise<voi
   if (!plot) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === projectId)
   if (!proj) throw new Error('Not found')
+  const dissolved = new Set<string>()
+  for (const g of db.plotSaleGroups) {
+    if (g.projectId !== projectId || !g.plotIds.includes(plotId)) continue
+    const next = g.plotIds.filter((x) => x !== plotId)
+    g.plotIds = next
+    if (next.length < 2) dissolved.add(g.id)
+  }
+  db.plotSaleGroups = db.plotSaleGroups.filter((g) => !dissolved.has(g.id))
   db.plots = db.plots.filter((x) => x.id !== plotId)
+  db.plotSales = db.plotSales.filter((s) => s.plotId !== plotId)
+  db.plotSalePayments = db.plotSalePayments.filter(
+    (p) =>
+      p.plotId !== plotId && (p.saleGroupId == null || !dissolved.has(p.saleGroupId)),
+  )
   proj.updatedAt = nowIso()
+  saveDb(db)
+}
+
+// —— Plot sale & buyer payments ——
+
+function mockPlotSaleFromGroup(g: CombinedPlotSaleGroup, anchorPlotId: string): PlotSale {
+  return {
+    id: g.id,
+    plotId: anchorPlotId,
+    purchaserName: g.purchaserName,
+    negotiatedFinalPrice: g.negotiatedFinalPrice,
+    agentCommissionPercent: g.agentCommissionPercent,
+    agentCommissionAmount: g.agentCommissionAmount,
+    stampDutyPrice: g.stampDutyPrice,
+    agreementPrice: g.agreementPrice,
+    currency: g.currency,
+    createdAt: g.createdAt,
+    updatedAt: g.updatedAt,
+    combinedGroupId: g.id,
+    combinedDisplayName: g.displayName,
+    combinedPlotIds: [...g.plotIds],
+  }
+}
+
+export async function getPlotSale(plotId: string, projectId: string): Promise<PlotSale | null> {
+  await delay()
+  if (!(await getProject(projectId))) throw new Error('Not found')
+  const db = loadDb()
+  const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
+  if (!plot) throw new Error('Not found')
+  const g = mockFindSaleGroup(db, projectId, plotId)
+  if (g) return mockPlotSaleFromGroup(g, plotId)
+  return db.plotSales.find((s) => s.plotId === plotId) ?? null
+}
+
+export async function upsertPlotSale(
+  plotId: string,
+  projectId: string,
+  body: {
+    purchaserName?: string | null
+    negotiatedFinalPrice?: number | null
+    agentCommissionPercent?: number | null
+    agentCommissionAmount?: number | null
+    stampDutyPrice?: number | null
+    agreementPrice?: number | null
+    currency?: string
+  },
+): Promise<PlotSale> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
+  if (!plot) throw new Error('Not found')
+  const proj = db.projects.find((p) => p.id === projectId)
+  if (!proj) throw new Error('Not found')
+  const ts = nowIso()
+  const cur = body.currency?.trim() || plot.currency || 'INR'
+  const g = mockFindSaleGroup(db, projectId, plotId)
+  if (g) {
+    g.purchaserName = body.purchaserName?.trim() || undefined
+    g.negotiatedFinalPrice = body.negotiatedFinalPrice ?? undefined
+    g.agentCommissionPercent = body.agentCommissionPercent ?? undefined
+    g.agentCommissionAmount = body.agentCommissionAmount ?? undefined
+    g.stampDutyPrice = body.stampDutyPrice ?? undefined
+    g.agreementPrice = body.agreementPrice ?? undefined
+    g.currency = cur
+    g.updatedAt = ts
+    proj.updatedAt = ts
+    saveDb(db)
+    return mockPlotSaleFromGroup(g, plotId)
+  }
+  const idx = db.plotSales.findIndex((s) => s.plotId === plotId)
+  const row: PlotSale =
+    idx >= 0
+      ? {
+          ...db.plotSales[idx],
+          purchaserName: body.purchaserName?.trim() || undefined,
+          negotiatedFinalPrice: body.negotiatedFinalPrice ?? undefined,
+          agentCommissionPercent: body.agentCommissionPercent ?? undefined,
+          agentCommissionAmount: body.agentCommissionAmount ?? undefined,
+          stampDutyPrice: body.stampDutyPrice ?? undefined,
+          agreementPrice: body.agreementPrice ?? undefined,
+          currency: cur,
+          updatedAt: ts,
+        }
+      : {
+          id: id('plotsale'),
+          plotId,
+          purchaserName: body.purchaserName?.trim() || undefined,
+          negotiatedFinalPrice: body.negotiatedFinalPrice ?? undefined,
+          agentCommissionPercent: body.agentCommissionPercent ?? undefined,
+          agentCommissionAmount: body.agentCommissionAmount ?? undefined,
+          stampDutyPrice: body.stampDutyPrice ?? undefined,
+          agreementPrice: body.agreementPrice ?? undefined,
+          currency: cur,
+          createdAt: ts,
+          updatedAt: ts,
+        }
+  if (idx >= 0) db.plotSales[idx] = row
+  else db.plotSales.push(row)
+  proj.updatedAt = ts
+  saveDb(db)
+  return row
+}
+
+export async function listPlotSalePayments(
+  plotId: string,
+  projectId: string,
+): Promise<PlotSalePayment[]> {
+  await delay()
+  if (!(await getProject(projectId))) throw new Error('Not found')
+  const db = loadDb()
+  const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
+  if (!plot) throw new Error('Not found')
+  const g = mockFindSaleGroup(db, projectId, plotId)
+  const list = g
+    ? db.plotSalePayments.filter((p) => p.saleGroupId === g.id)
+    : db.plotSalePayments.filter((p) => p.plotId === plotId)
+  return list.sort(
+    (a, b) => b.paidDate.localeCompare(a.paidDate) || b.createdAt.localeCompare(a.createdAt),
+  )
+}
+
+export async function createPlotSalePayment(
+  plotId: string,
+  projectId: string,
+  input: {
+    paymentMode: string
+    paidDate: string
+    amount?: number | null
+    notes?: string | null
+  },
+): Promise<PlotSalePayment> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
+  if (!plot) throw new Error('Not found')
+  const proj = db.projects.find((p) => p.id === projectId)
+  if (!proj) throw new Error('Not found')
+  const ts = nowIso()
+  const g = mockFindSaleGroup(db, projectId, plotId)
+  const pay: PlotSalePayment = {
+    id: id('plotpay'),
+    plotId: g ? undefined : plotId,
+    saleGroupId: g?.id,
+    paymentMode: input.paymentMode.trim(),
+    paidDate: input.paidDate.slice(0, 10),
+    amount: input.amount ?? undefined,
+    notes: input.notes?.trim() || undefined,
+    createdAt: ts,
+    updatedAt: ts,
+  }
+  db.plotSalePayments.push(pay)
+  proj.updatedAt = ts
+  saveDb(db)
+  return pay
+}
+
+function mockPaymentMatchesPlot(
+  db: MockDatabase,
+  projectId: string,
+  plotId: string,
+  p: PlotSalePayment,
+): boolean {
+  if (p.plotId === plotId) return true
+  if (p.saleGroupId == null) return false
+  const g = db.plotSaleGroups.find((x) => x.id === p.saleGroupId && x.projectId === projectId)
+  return g != null && g.plotIds.includes(plotId)
+}
+
+export async function updatePlotSalePayment(
+  plotId: string,
+  paymentId: string,
+  projectId: string,
+  patch: Partial<{
+    paymentMode: string
+    paidDate: string
+    amount: number | null
+    notes: string | null
+  }>,
+): Promise<PlotSalePayment> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
+  if (!plot) throw new Error('Not found')
+  const proj = db.projects.find((p) => p.id === projectId)
+  if (!proj) throw new Error('Not found')
+  const pay = db.plotSalePayments.find(
+    (p) => p.id === paymentId && mockPaymentMatchesPlot(db, projectId, plotId, p),
+  )
+  if (!pay) throw new Error('Not found')
+  const ts = nowIso()
+  if (patch.paymentMode !== undefined) pay.paymentMode = patch.paymentMode.trim()
+  if (patch.paidDate !== undefined) pay.paidDate = patch.paidDate.slice(0, 10)
+  if (patch.amount !== undefined) pay.amount = patch.amount ?? undefined
+  if (patch.notes !== undefined) pay.notes = patch.notes?.trim() || undefined
+  pay.updatedAt = ts
+  proj.updatedAt = ts
+  saveDb(db)
+  return pay
+}
+
+export async function deletePlotSalePayment(
+  plotId: string,
+  paymentId: string,
+  projectId: string,
+): Promise<void> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const plot = db.plots.find((x) => x.id === plotId && x.projectId === projectId)
+  if (!plot) throw new Error('Not found')
+  const proj = db.projects.find((p) => p.id === projectId)
+  if (!proj) throw new Error('Not found')
+  const before = db.plotSalePayments.length
+  db.plotSalePayments = db.plotSalePayments.filter(
+    (p) =>
+      !(
+        p.id === paymentId &&
+        mockPaymentMatchesPlot(db, projectId, plotId, p)
+      ),
+  )
+  if (db.plotSalePayments.length === before) throw new Error('Not found')
+  proj.updatedAt = nowIso()
+  saveDb(db)
+}
+
+export async function createCombinedPlotSaleGroup(input: {
+  projectId: string
+  displayName?: string
+  plotIds: string[]
+}): Promise<CombinedPlotSaleGroup> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const proj = db.projects.find((p) => p.id === input.projectId)
+  if (!proj) throw new Error('Not found')
+  const ids = [...new Set(input.plotIds.filter(Boolean))]
+  if (ids.length < 2) throw new Error('A combined sale must include at least two plots')
+  for (const pid of ids) {
+    const pl = db.plots.find((x) => x.id === pid && x.projectId === input.projectId)
+    if (!pl) throw new Error('One or more plots are not in this project')
+    if (mockFindSaleGroup(db, input.projectId, pid)) {
+      throw new Error('A plot is already in another combined sale')
+    }
+    if (mockPlotHasSoloPayments(db, pid)) {
+      throw new Error('Clear per-plot buyer payments on each plot before combining')
+    }
+    const solo = db.plotSales.find((s) => s.plotId === pid)
+    if (solo && mockSubstantivePlotSale(solo)) {
+      throw new Error('Remove or clear per-plot sale details on each plot before combining')
+    }
+  }
+  const ts = nowIso()
+  const g: CombinedPlotSaleGroup = {
+    id: id('plotgrp'),
+    projectId: input.projectId,
+    displayName: input.displayName?.trim() ?? '',
+    plotIds: ids,
+    currency: 'INR',
+    createdAt: ts,
+    updatedAt: ts,
+  }
+  db.plotSaleGroups.push(g)
+  for (const pid of ids) {
+    db.plotSales = db.plotSales.filter((s) => s.plotId !== pid)
+  }
+  proj.updatedAt = ts
+  saveDb(db)
+  return g
+}
+
+export async function getCombinedPlotSaleGroup(
+  groupId: string,
+  projectId: string,
+): Promise<CombinedPlotSaleGroup> {
+  await delay()
+  const db = loadDb()
+  const g = db.plotSaleGroups.find((x) => x.id === groupId && x.projectId === projectId)
+  if (!g) throw new Error('Not found')
+  return g
+}
+
+export async function updateCombinedPlotSaleGroup(
+  groupId: string,
+  projectId: string,
+  patch: { displayName?: string; plotIds?: string[] },
+): Promise<CombinedPlotSaleGroup> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const g = db.plotSaleGroups.find((x) => x.id === groupId && x.projectId === projectId)
+  if (!g) throw new Error('Not found')
+  const proj = db.projects.find((p) => p.id === projectId)
+  if (!proj) throw new Error('Not found')
+  const ts = nowIso()
+  if (patch.displayName !== undefined) g.displayName = patch.displayName.trim()
+  if (patch.plotIds !== undefined) {
+    const ids = [...new Set(patch.plotIds.filter(Boolean))]
+    if (ids.length < 2) throw new Error('A combined sale must include at least two plots')
+    const prev = new Set(g.plotIds)
+    for (const pid of ids) {
+      const pl = db.plots.find((x) => x.id === pid && x.projectId === projectId)
+      if (!pl) throw new Error('One or more plots are not in this project')
+      if (!prev.has(pid)) {
+        const other = db.plotSaleGroups.some(
+          (gr) => gr.id !== groupId && gr.plotIds.includes(pid),
+        )
+        if (other) throw new Error('A plot is already in another combined sale')
+        if (mockPlotHasSoloPayments(db, pid)) {
+          throw new Error('Clear per-plot buyer payments on each plot before adding')
+        }
+        const solo = db.plotSales.find((s) => s.plotId === pid)
+        if (solo && mockSubstantivePlotSale(solo)) {
+          throw new Error('Remove or clear per-plot sale details before adding')
+        }
+      }
+    }
+    for (const pid of prev) {
+      if (!ids.includes(pid)) {
+        /* removed from group */
+      }
+    }
+    g.plotIds = ids
+    for (const pid of ids) {
+      if (!prev.has(pid)) db.plotSales = db.plotSales.filter((s) => s.plotId !== pid)
+    }
+  }
+  g.updatedAt = ts
+  proj.updatedAt = ts
+  saveDb(db)
+  return g
+}
+
+export async function deleteCombinedPlotSaleGroup(
+  groupId: string,
+  projectId: string,
+): Promise<void> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const before = db.plotSaleGroups.length
+  db.plotSaleGroups = db.plotSaleGroups.filter(
+    (g) => !(g.id === groupId && g.projectId === projectId),
+  )
+  if (db.plotSaleGroups.length === before) throw new Error('Not found')
+  db.plotSalePayments = db.plotSalePayments.filter((p) => p.saleGroupId !== groupId)
+  const proj = db.projects.find((p) => p.id === projectId)
+  if (proj) proj.updatedAt = nowIso()
   saveDb(db)
 }
 

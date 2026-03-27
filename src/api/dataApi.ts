@@ -17,6 +17,9 @@ import type {
   PlotStatus,
   Project,
   ProjectDocument,
+  CombinedPlotSaleGroup,
+  PlotSale,
+  PlotSalePayment,
   ProjectReport,
   ProjectStatus,
   Vendor,
@@ -172,6 +175,116 @@ export async function updatePlot(
 export async function deletePlot(plotId: string, projectId: string): Promise<void> {
   if (isBackendAuthEnabled()) return backend.deletePlot(plotId, projectId)
   return mock.deletePlot(plotId, projectId)
+}
+
+export async function getPlotSale(plotId: string, projectId: string): Promise<PlotSale | null> {
+  if (isBackendAuthEnabled()) return backend.getPlotSale(plotId, projectId)
+  return mock.getPlotSale(plotId, projectId)
+}
+
+export async function upsertPlotSale(
+  plotId: string,
+  projectId: string,
+  body: {
+    purchaserName?: string | null
+    negotiatedFinalPrice?: number | null
+    agentCommissionPercent?: number | null
+    agentCommissionAmount?: number | null
+    stampDutyPrice?: number | null
+    agreementPrice?: number | null
+    currency?: string
+  },
+): Promise<PlotSale> {
+  if (isBackendAuthEnabled()) return backend.upsertPlotSale(plotId, projectId, body)
+  return mock.upsertPlotSale(plotId, projectId, body)
+}
+
+export async function listPlotSalePayments(
+  plotId: string,
+  projectId: string,
+): Promise<PlotSalePayment[]> {
+  if (isBackendAuthEnabled()) return backend.listPlotSalePayments(plotId, projectId)
+  return mock.listPlotSalePayments(plotId, projectId)
+}
+
+export async function createPlotSalePayment(
+  plotId: string,
+  projectId: string,
+  input: {
+    paymentMode: string
+    paidDate: string
+    amount?: number | null
+    notes?: string | null
+  },
+): Promise<PlotSalePayment> {
+  if (isBackendAuthEnabled()) return backend.createPlotSalePayment(plotId, projectId, input)
+  return mock.createPlotSalePayment(plotId, projectId, input)
+}
+
+export async function updatePlotSalePayment(
+  plotId: string,
+  paymentId: string,
+  projectId: string,
+  patch: Partial<{
+    paymentMode: string
+    paidDate: string
+    amount: number | null
+    notes: string | null
+  }>,
+): Promise<PlotSalePayment> {
+  if (isBackendAuthEnabled()) {
+    return backend.updatePlotSalePayment(plotId, paymentId, projectId, patch)
+  }
+  return mock.updatePlotSalePayment(plotId, paymentId, projectId, patch)
+}
+
+export async function deletePlotSalePayment(
+  plotId: string,
+  paymentId: string,
+  projectId: string,
+): Promise<void> {
+  if (isBackendAuthEnabled()) {
+    return backend.deletePlotSalePayment(plotId, paymentId, projectId)
+  }
+  return mock.deletePlotSalePayment(plotId, paymentId, projectId)
+}
+
+export async function createCombinedPlotSaleGroup(input: {
+  projectId: string
+  displayName?: string
+  plotIds: string[]
+}): Promise<CombinedPlotSaleGroup> {
+  if (isBackendAuthEnabled()) return backend.createCombinedPlotSaleGroup(input)
+  return mock.createCombinedPlotSaleGroup(input)
+}
+
+export async function getCombinedPlotSaleGroup(
+  groupId: string,
+  projectId: string,
+): Promise<CombinedPlotSaleGroup> {
+  if (isBackendAuthEnabled()) return backend.getCombinedPlotSaleGroup(groupId, projectId)
+  return mock.getCombinedPlotSaleGroup(groupId, projectId)
+}
+
+export async function updateCombinedPlotSaleGroup(
+  groupId: string,
+  projectId: string,
+  patch: { displayName?: string; plotIds?: string[] },
+): Promise<CombinedPlotSaleGroup> {
+  if (isBackendAuthEnabled()) {
+    return backend.updateCombinedPlotSaleGroup(groupId, projectId, patch)
+  }
+  return mock.updateCombinedPlotSaleGroup(groupId, projectId, patch)
+}
+
+export async function deleteCombinedPlotSaleGroup(
+  groupId: string,
+  projectId: string,
+): Promise<void> {
+  if (isBackendAuthEnabled()) {
+    return backend.deleteCombinedPlotSaleGroup(groupId, projectId)
+  }
+  return mock.deleteCombinedPlotSaleGroup(groupId, projectId)
 }
 
 export async function listVendors(projectId: string): Promise<Vendor[]> {

@@ -11,7 +11,10 @@ import type {
   DocumentKind,
   Invoice,
   InvoiceStatus,
+  CombinedPlotSaleGroup,
   LandPlot,
+  PlotSale,
+  PlotSalePayment,
   Payment,
   Phase,
   PhaseStatus,
@@ -329,6 +332,233 @@ export async function updatePlot(
 export async function deletePlot(plotId: string, projectId: string): Promise<void> {
   await apiRequest<void>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/plots/${encodeURIComponent(plotId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+function normalizePlotSale(raw: Record<string, unknown>): PlotSale {
+  const combinedPlotIds = Array.isArray(raw.combinedPlotIds)
+    ? raw.combinedPlotIds.map((x) => String(x))
+    : undefined
+  return {
+    id: String(raw.id),
+    plotId: String(raw.plotId),
+    purchaserName:
+      typeof raw.purchaserName === 'string' && raw.purchaserName.trim() !== ''
+        ? raw.purchaserName
+        : undefined,
+    negotiatedFinalPrice: asOptionalNumber(raw.negotiatedFinalPrice),
+    agentCommissionPercent: asOptionalNumber(raw.agentCommissionPercent),
+    agentCommissionAmount: asOptionalNumber(raw.agentCommissionAmount),
+    stampDutyPrice: asOptionalNumber(raw.stampDutyPrice),
+    agreementPrice: asOptionalNumber(raw.agreementPrice),
+    currency: typeof raw.currency === 'string' ? raw.currency : 'INR',
+    createdAt: String(raw.createdAt ?? ''),
+    updatedAt: String(raw.updatedAt ?? ''),
+    combinedGroupId:
+      typeof raw.combinedGroupId === 'string' ? raw.combinedGroupId : undefined,
+    combinedDisplayName:
+      typeof raw.combinedDisplayName === 'string' ? raw.combinedDisplayName : undefined,
+    combinedPlotIds,
+  }
+}
+
+function normalizePlotSalePayment(raw: Record<string, unknown>): PlotSalePayment {
+  return {
+    id: String(raw.id),
+    plotId: raw.plotId != null ? String(raw.plotId) : undefined,
+    saleGroupId: raw.saleGroupId != null ? String(raw.saleGroupId) : undefined,
+    paymentMode: String(raw.paymentMode ?? ''),
+    paidDate: String(raw.paidDate ?? '').slice(0, 10),
+    amount: asOptionalNumber(raw.amount),
+    notes:
+      typeof raw.notes === 'string' && raw.notes.trim() !== '' ? raw.notes : undefined,
+    createdAt: String(raw.createdAt ?? ''),
+    updatedAt: String(raw.updatedAt ?? ''),
+  }
+}
+
+function normalizeCombinedPlotSaleGroup(raw: Record<string, unknown>): CombinedPlotSaleGroup {
+  return {
+    id: String(raw.id),
+    projectId: String(raw.projectId),
+    displayName: typeof raw.displayName === 'string' ? raw.displayName : '',
+    plotIds: Array.isArray(raw.plotIds) ? raw.plotIds.map((x) => String(x)) : [],
+    purchaserName:
+      typeof raw.purchaserName === 'string' && raw.purchaserName.trim() !== ''
+        ? raw.purchaserName
+        : undefined,
+    negotiatedFinalPrice: asOptionalNumber(raw.negotiatedFinalPrice),
+    agentCommissionPercent: asOptionalNumber(raw.agentCommissionPercent),
+    agentCommissionAmount: asOptionalNumber(raw.agentCommissionAmount),
+    stampDutyPrice: asOptionalNumber(raw.stampDutyPrice),
+    agreementPrice: asOptionalNumber(raw.agreementPrice),
+    currency: typeof raw.currency === 'string' ? raw.currency : 'INR',
+    createdAt: String(raw.createdAt ?? ''),
+    updatedAt: String(raw.updatedAt ?? ''),
+  }
+}
+
+export async function getPlotSale(
+  plotId: string,
+  projectId: string,
+): Promise<PlotSale | null> {
+  const raw = await apiRequest<PlotSale | null>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plots/${encodeURIComponent(plotId)}/sale`,
+  )
+  if (raw == null) return null
+  return normalizePlotSale(raw as unknown as Record<string, unknown>)
+}
+
+export async function upsertPlotSale(
+  plotId: string,
+  projectId: string,
+  body: {
+    purchaserName?: string | null
+    negotiatedFinalPrice?: number | null
+    agentCommissionPercent?: number | null
+    agentCommissionAmount?: number | null
+    stampDutyPrice?: number | null
+    agreementPrice?: number | null
+    currency?: string
+  },
+): Promise<PlotSale> {
+  const raw = await apiRequest<Record<string, unknown>>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plots/${encodeURIComponent(plotId)}/sale`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({
+        purchaserName: body.purchaserName?.trim() ?? null,
+        negotiatedFinalPrice: body.negotiatedFinalPrice ?? null,
+        agentCommissionPercent: body.agentCommissionPercent ?? null,
+        agentCommissionAmount: body.agentCommissionAmount ?? null,
+        stampDutyPrice: body.stampDutyPrice ?? null,
+        agreementPrice: body.agreementPrice ?? null,
+        currency: body.currency?.trim(),
+      }),
+    },
+  )
+  return normalizePlotSale(raw)
+}
+
+export async function listPlotSalePayments(
+  plotId: string,
+  projectId: string,
+): Promise<PlotSalePayment[]> {
+  const rows = await apiRequest<Record<string, unknown>[]>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plots/${encodeURIComponent(plotId)}/sale/payments`,
+  )
+  return (rows ?? []).map(normalizePlotSalePayment)
+}
+
+export async function createPlotSalePayment(
+  plotId: string,
+  projectId: string,
+  input: {
+    paymentMode: string
+    paidDate: string
+    amount?: number | null
+    notes?: string | null
+  },
+): Promise<PlotSalePayment> {
+  const raw = await apiRequest<Record<string, unknown>>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plots/${encodeURIComponent(plotId)}/sale/payments`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        paymentMode: input.paymentMode.trim(),
+        paidDate: input.paidDate,
+        amount: input.amount ?? null,
+        notes: input.notes?.trim() ?? null,
+      }),
+    },
+  )
+  return normalizePlotSalePayment(raw)
+}
+
+export async function updatePlotSalePayment(
+  plotId: string,
+  paymentId: string,
+  projectId: string,
+  patch: Partial<{
+    paymentMode: string
+    paidDate: string
+    amount: number | null
+    notes: string | null
+  }>,
+): Promise<PlotSalePayment> {
+  const body: Record<string, unknown> = {}
+  if (patch.paymentMode !== undefined) body.paymentMode = patch.paymentMode.trim()
+  if (patch.paidDate !== undefined) body.paidDate = patch.paidDate
+  if (patch.amount !== undefined) body.amount = patch.amount
+  if (patch.notes !== undefined) body.notes = patch.notes?.trim() ?? null
+  const raw = await apiRequest<Record<string, unknown>>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plots/${encodeURIComponent(plotId)}/sale/payments/${encodeURIComponent(paymentId)}`,
+    { method: 'PATCH', body: JSON.stringify(body) },
+  )
+  return normalizePlotSalePayment(raw)
+}
+
+export async function deletePlotSalePayment(
+  plotId: string,
+  paymentId: string,
+  projectId: string,
+): Promise<void> {
+  await apiRequest<void>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plots/${encodeURIComponent(plotId)}/sale/payments/${encodeURIComponent(paymentId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export async function createCombinedPlotSaleGroup(input: {
+  projectId: string
+  displayName?: string
+  plotIds: string[]
+}): Promise<CombinedPlotSaleGroup> {
+  const raw = await apiRequest<Record<string, unknown>>(
+    `/api/v1/projects/${encodeURIComponent(input.projectId)}/plot-sale-groups`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        displayName: input.displayName?.trim() ?? '',
+        plotIds: input.plotIds,
+      }),
+    },
+  )
+  return normalizeCombinedPlotSaleGroup(raw)
+}
+
+export async function getCombinedPlotSaleGroup(
+  groupId: string,
+  projectId: string,
+): Promise<CombinedPlotSaleGroup> {
+  const raw = await apiRequest<Record<string, unknown>>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plot-sale-groups/${encodeURIComponent(groupId)}`,
+  )
+  return normalizeCombinedPlotSaleGroup(raw)
+}
+
+export async function updateCombinedPlotSaleGroup(
+  groupId: string,
+  projectId: string,
+  patch: { displayName?: string; plotIds?: string[] },
+): Promise<CombinedPlotSaleGroup> {
+  const body: Record<string, unknown> = {}
+  if (patch.displayName !== undefined) body.displayName = patch.displayName.trim()
+  if (patch.plotIds !== undefined) body.plotIds = patch.plotIds
+  const raw = await apiRequest<Record<string, unknown>>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plot-sale-groups/${encodeURIComponent(groupId)}`,
+    { method: 'PATCH', body: JSON.stringify(body) },
+  )
+  return normalizeCombinedPlotSaleGroup(raw)
+}
+
+export async function deleteCombinedPlotSaleGroup(
+  groupId: string,
+  projectId: string,
+): Promise<void> {
+  await apiRequest<void>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plot-sale-groups/${encodeURIComponent(groupId)}`,
     { method: 'DELETE' },
   )
 }

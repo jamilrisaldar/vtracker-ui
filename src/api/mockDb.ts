@@ -4,7 +4,10 @@ import type {
   AccountFixedDepositStatus,
   AccountTransaction,
   Invoice,
+  CombinedPlotSaleGroup,
   LandPlot,
+  PlotSale,
+  PlotSalePayment,
   Payment,
   Phase,
   Project,
@@ -22,6 +25,9 @@ export interface MockDatabase {
   projects: Project[]
   phases: Phase[]
   plots: LandPlot[]
+  plotSales: PlotSale[]
+  plotSaleGroups: CombinedPlotSaleGroup[]
+  plotSalePayments: PlotSalePayment[]
   vendors: Vendor[]
   invoices: Invoice[]
   payments: Payment[]
@@ -40,6 +46,9 @@ function emptyDb(): MockDatabase {
     projects: [],
     phases: [],
     plots: [],
+    plotSales: [],
+    plotSaleGroups: [],
+    plotSalePayments: [],
     vendors: [],
     invoices: [],
     payments: [],
@@ -121,6 +130,9 @@ export function loadDb(): MockDatabase {
         status: migrateFixedDepositStoredStatus(d.status),
       })),
       phases: (parsed.phases ?? []).map(migratePhase),
+      plotSales: parsed.plotSales ?? [],
+      plotSaleGroups: parsed.plotSaleGroups ?? [],
+      plotSalePayments: parsed.plotSalePayments ?? [],
       plots: (parsed.plots ?? []).map((p) => {
         const lp = p as LandPlot
         const merged: LandPlot = {

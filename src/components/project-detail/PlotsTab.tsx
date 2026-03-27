@@ -9,6 +9,9 @@ import {
   plotSoldRevenueAmount,
 } from '../../utils/landPlotDisplay'
 import { PlotAddEditPanel } from '../PlotAddEditPanel'
+import { CombinePlotsSalePanel } from './CombinePlotsSalePanel'
+import { PlotSalePanel } from './PlotSalePanel'
+import { PlotTransactionsView } from './PlotTransactionsView'
 import {
   plotStatusLabel,
   plotTableRowClassName,
@@ -155,6 +158,26 @@ function IconBookmarkOutline({ className }: { className?: string }) {
   )
 }
 
+function IconSale({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+    </svg>
+  )
+}
+
 const iconBtnBase =
   'inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-200 p-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-1 disabled:opacity-50'
 
@@ -187,10 +210,20 @@ export function PlotsTab({
 }) {
   const [panelMode, setPanelMode] = useState<'add' | 'edit' | null>(null)
   const [panelPlot, setPanelPlot] = useState<LandPlot | null>(null)
+  const [salePanelPlot, setSalePanelPlot] = useState<LandPlot | null>(null)
+  const [transactionsPlot, setTransactionsPlot] = useState<LandPlot | null>(null)
   const [copyFromPlot, setCopyFromPlot] = useState<LandPlot | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<LandPlot | null>(null)
   const [deleteConfirmInput, setDeleteConfirmInput] = useState('')
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [combinePanel, setCombinePanel] = useState<
+    null | 'create' | { editGroupId: string }
+  >(null)
+
+  const openCombinedSaleEditor = (groupId: string) => {
+    setSalePanelPlot(null)
+    setCombinePanel({ editGroupId: groupId })
+  }
 
   const closePanel = () => {
     setPanelMode(null)
@@ -248,89 +281,139 @@ export function PlotsTab({
           <p className="mt-1 text-sm text-slate-600">
             Track dimensions (feet), area (regular or irregular four sides), pricing, and sale status.
           </p>
+          <p className="mt-2 text-sm text-slate-600">
+            <span className="font-medium text-violet-900">Combined sale:</span> when one buyer takes several
+            plots together, use <strong>Combine plots for sale</strong> so they share a single payment
+            history. Those rows show a violet badge in the table.
+          </p>
         </div>
-        {!readOnly ? (
-          <button
-            type="button"
-            onClick={() => {
-              setCopyFromPlot(null)
-              setPanelPlot(null)
-              setPanelMode('add')
-            }}
-            className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-          >
-            Add plot
-          </button>
+        {!readOnly && !transactionsPlot ? (
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setCopyFromPlot(null)
+                setPanelPlot(null)
+                setPanelMode('add')
+              }}
+              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+            >
+              Add plot
+            </button>
+            <button
+              type="button"
+              onClick={() => setCombinePanel('create')}
+              className="rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900 hover:bg-violet-100"
+            >
+              Combine plots for sale
+            </button>
+          </div>
         ) : null}
       </div>
 
       {deleteTarget ? (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-plot-title"
-        >
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
-            <h3 id="delete-plot-title" className="text-lg font-medium text-slate-900">
-              Delete plot
-            </h3>
-            <p className="mt-2 text-sm text-slate-600">
-              This cannot be undone. Type the plot number exactly as shown in the table to confirm.
-            </p>
-            {deleteTarget.plotNumber?.trim() ? (
-              <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 font-mono text-sm text-slate-900">
-                {deleteTarget.plotNumber.trim()}
+        <div className="fixed inset-0 z-[60] bg-slate-900/40" role="dialog" aria-modal="true" aria-labelledby="delete-plot-title">
+          <div className="absolute inset-y-0 right-0 flex w-full max-w-md">
+            <div className="flex h-full w-full flex-col border-l border-slate-200 bg-white p-6 shadow-xl">
+              <h3 id="delete-plot-title" className="text-lg font-medium text-slate-900">
+                Delete plot
+              </h3>
+              <p className="mt-2 text-sm text-slate-600">
+                This cannot be undone. Type the plot number exactly as shown in the table to confirm.
               </p>
-            ) : (
-              <p className="mt-3 text-sm text-slate-600">
-                This plot has no plot number. Type{' '}
-                <span className="font-mono font-medium text-slate-900">{DELETE_CONFIRM_NO_PLOT_NUMBER}</span>{' '}
-                to confirm.
-              </p>
-            )}
-            <label className="mt-4 block">
-              <span className="text-xs font-medium text-slate-600">Confirmation</span>
-              <input
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                value={deleteConfirmInput}
-                onChange={(e) => setDeleteConfirmInput(e.target.value)}
-                placeholder={deleteExpected}
-                autoComplete="off"
-                autoFocus
-              />
-            </label>
-            <div className="mt-6 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                onClick={closeDeleteDialog}
-                disabled={deleteBusy}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                disabled={!deleteCanSubmit}
-                onClick={() => {
-                  if (!deleteTarget || !deleteCanSubmit) return
-                  setDeleteBusy(true)
-                  void (async () => {
-                    try {
-                      await api.deletePlot(deleteTarget.id, projectId)
-                      await onRefresh()
-                      closeDeleteDialog()
-                    } catch (err) {
-                      onError(err instanceof Error ? err.message : 'Delete failed.')
-                      setDeleteBusy(false)
-                    }
-                  })()
-                }}
-              >
-                {deleteBusy ? 'Deleting…' : 'Delete plot'}
-              </button>
+              {deleteTarget.plotNumber?.trim() ? (
+                <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 font-mono text-sm text-slate-900">
+                  {deleteTarget.plotNumber.trim()}
+                </p>
+              ) : (
+                <p className="mt-3 text-sm text-slate-600">
+                  This plot has no plot number. Type{' '}
+                  <span className="font-mono font-medium text-slate-900">{DELETE_CONFIRM_NO_PLOT_NUMBER}</span>{' '}
+                  to confirm.
+                </p>
+              )}
+              <label className="mt-4 block">
+                <span className="text-xs font-medium text-slate-600">Confirmation</span>
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  value={deleteConfirmInput}
+                  onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                  placeholder={deleteExpected}
+                  autoComplete="off"
+                  autoFocus
+                />
+              </label>
+              <div className="mt-auto flex flex-wrap justify-end gap-2 pt-8">
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  onClick={closeDeleteDialog}
+                  disabled={deleteBusy}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                  disabled={!deleteCanSubmit}
+                  onClick={() => {
+                    if (!deleteTarget || !deleteCanSubmit) return
+                    setDeleteBusy(true)
+                    void (async () => {
+                      try {
+                        await api.deletePlot(deleteTarget.id, projectId)
+                        await onRefresh()
+                        closeDeleteDialog()
+                      } catch (err) {
+                        onError(err instanceof Error ? err.message : 'Delete failed.')
+                        setDeleteBusy(false)
+                      }
+                    })()
+                  }}
+                >
+                  {deleteBusy ? 'Deleting…' : 'Delete plot'}
+                </button>
+              </div>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {salePanelPlot ? (
+        <div className="fixed inset-0 z-[55] bg-slate-900/40">
+          <div className="absolute inset-y-0 right-0 w-full max-w-xl">
+            <PlotSalePanel
+              projectId={projectId}
+              plot={salePanelPlot}
+              projectPlots={plots}
+              readOnly={readOnly}
+              onClose={() => setSalePanelPlot(null)}
+              onRefresh={onRefresh}
+              onError={onError}
+              onViewTransactions={() => {
+                setTransactionsPlot(salePanelPlot)
+                setSalePanelPlot(null)
+              }}
+              onEditCombinedSale={readOnly ? undefined : openCombinedSaleEditor}
+              className="h-full overflow-y-auto p-6 shadow-xl"
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {combinePanel ? (
+        <div className="fixed inset-0 z-[56] bg-slate-900/40">
+          <div className="absolute inset-y-0 right-0 w-full max-w-md">
+            <CombinePlotsSalePanel
+              projectId={projectId}
+              plots={plots}
+              mode={combinePanel === 'create' ? 'create' : { editGroupId: combinePanel.editGroupId }}
+              readOnly={readOnly}
+              onClose={() => setCombinePanel(null)}
+              onRefresh={onRefresh}
+              onError={onError}
+              className="h-full overflow-y-auto p-6 shadow-xl"
+            />
           </div>
         </div>
       ) : null}
@@ -359,19 +442,33 @@ export function PlotsTab({
         </div>
       )}
 
+      {transactionsPlot ? (
+        <PlotTransactionsView
+          projectId={projectId}
+          plot={transactionsPlot}
+          projectPlots={plots}
+          readOnly={readOnly}
+          onBack={() => setTransactionsPlot(null)}
+          onOpenSalePanel={() => setSalePanelPlot(transactionsPlot)}
+          onEditCombinedSale={readOnly ? undefined : openCombinedSaleEditor}
+        />
+      ) : (
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="max-h-[min(70vh,28rem)] overflow-auto overscroll-contain">
           <table className="min-w-full text-left text-sm">
             <thead className="text-xs uppercase text-slate-500">
               <tr>
                 <th
-                  className="sticky top-0 left-0 z-[6] w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] whitespace-nowrap border-b border-r border-slate-200/90 bg-slate-50 px-2 py-3 text-left shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]"
+                  className="sticky top-0 left-0 z-[6] w-[7.75rem] min-w-[7.75rem] max-w-[7.75rem] whitespace-nowrap border-b border-r border-slate-200/90 bg-slate-50 px-2 py-3 text-left shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]"
                   scope="col"
                 >
                   <span className="sr-only">Actions</span>
                 </th>
-                <th className="sticky top-0 left-[5.5rem] z-[5] min-w-[7rem] border-b border-r border-slate-200/90 bg-slate-50 px-4 py-3 text-left shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">
+                <th className="sticky top-0 left-[7.75rem] z-[5] min-w-[7rem] border-b border-r border-slate-200/90 bg-slate-50 px-4 py-3 text-left shadow-[4px_0_12px_-4px_rgba(15,23,42,0.12)]">
                   Plot #
+                </th>
+                <th className="sticky top-0 z-[2] min-w-[10rem] max-w-[14rem] border-b border-slate-200 bg-slate-50 px-3 py-3 text-left">
+                  Sale bundle
                 </th>
                 <th className="sticky top-0 z-[2] min-w-[17rem] border-b border-slate-200 bg-slate-50 px-4 py-3 text-left">
                   W × L (ft)
@@ -420,7 +517,7 @@ export function PlotsTab({
             <tbody>
             {plots.length === 0 ? (
               <tr>
-                <td colSpan={16} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={17} className="px-4 py-8 text-center text-slate-500">
                   No plots yet. Add one to track this land.
                 </td>
               </tr>
@@ -430,7 +527,7 @@ export function PlotsTab({
                 return (
                   <tr key={p.id} className={plotTableRowClassName(p)}>
                     <td className={plotTableStickyActionsCellClassName()}>
-                      <div className="flex w-[5.5rem] shrink-0 flex-nowrap items-center gap-1.5">
+                      <div className="flex min-w-0 shrink-0 flex-nowrap items-center gap-1">
                         <button
                           type="button"
                           disabled={readOnly}
@@ -444,6 +541,17 @@ export function PlotsTab({
                           }}
                         >
                           <IconPencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className={`${iconBtnBase} shrink-0 text-violet-700 hover:border-violet-200 hover:bg-violet-50`}
+                          aria-label="Plot sale and buyer payments"
+                          title="Sale & payments"
+                          onClick={() => {
+                            setSalePanelPlot(p)
+                          }}
+                        >
+                          <IconSale className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
@@ -463,6 +571,30 @@ export function PlotsTab({
                     </td>
                     <td className={plotTableStickyPlotNumberCellClassName(p)}>
                       {p.plotNumber ?? '—'}
+                    </td>
+                    <td className="min-w-[10rem] max-w-[14rem] px-3 py-3 align-top">
+                      {p.combinedSale ? (
+                        <button
+                          type="button"
+                          disabled={readOnly}
+                          title={
+                            p.combinedSale.plotNumbersSummary
+                              ? `Together: ${p.combinedSale.plotNumbersSummary}`
+                              : `${p.combinedSale.plotCount} plots in one sale`
+                          }
+                          onClick={() => openCombinedSaleEditor(p.combinedSale!.groupId)}
+                          className="inline-flex max-w-full flex-col items-start rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-left text-xs font-medium text-violet-900 hover:bg-violet-100 disabled:cursor-default disabled:opacity-60"
+                        >
+                          <span className="truncate">Combined · {p.combinedSale.plotCount} plots</span>
+                          {p.combinedSale.displayName.trim() ? (
+                            <span className="w-full truncate font-normal text-violet-800/90">
+                              {p.combinedSale.displayName.trim()}
+                            </span>
+                          ) : null}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
                     </td>
                     <td className="min-w-[17rem] whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-800 align-top">
                       {plotDimensionsLabel(p)}
@@ -615,6 +747,7 @@ export function PlotsTab({
           </div>
         ) : null}
       </div>
+      )}
     </div>
   )
 }
