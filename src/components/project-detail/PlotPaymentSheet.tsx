@@ -20,6 +20,8 @@ export function PlotPaymentSheet({
   initialMode,
   initialPaidDate,
   initialNotes,
+  initialAccountId = '',
+  accountChoices,
   onSubmit,
   readOnly = false,
 }: {
@@ -32,11 +34,16 @@ export function PlotPaymentSheet({
   initialMode: string
   initialPaidDate: string
   initialNotes: string
+  /** When `accountChoices` is set, initial selected account id (or empty). */
+  initialAccountId?: string
+  /** When set, shows “Received into” account dropdown (buyer payments). */
+  accountChoices?: { id: string; label: string }[]
   onSubmit: (data: {
     amount?: number | null
     paymentMode: string
     paidDate: string
     notes?: string | null
+    accountId?: string | null
   }) => Promise<void>
   readOnly?: boolean
 }) {
@@ -44,6 +51,7 @@ export function PlotPaymentSheet({
   const [payMode, setPayMode] = useState('')
   const [payDate, setPayDate] = useState('')
   const [payNotes, setPayNotes] = useState('')
+  const [payAccountId, setPayAccountId] = useState('')
 
   useEffect(() => {
     if (open) {
@@ -51,13 +59,16 @@ export function PlotPaymentSheet({
       setPayMode(initialMode)
       setPayDate(initialPaidDate)
       setPayNotes(initialNotes)
+      setPayAccountId(initialAccountId ?? '')
     }
-  }, [open, initialAmount, initialMode, initialPaidDate, initialNotes])
+  }, [open, initialAmount, initialMode, initialPaidDate, initialNotes, initialAccountId])
 
   const labelCls = 'text-xs font-medium text-slate-600'
   const inputCls = 'mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm'
 
   if (!open) return null
+
+  const showAccount = accountChoices != null && accountChoices.length > 0
 
   return (
     <div
@@ -111,6 +122,23 @@ export function PlotPaymentSheet({
                     placeholder="Cash / UPI / Cheque…"
                   />
                 </label>
+                {showAccount ? (
+                  <label className="block sm:col-span-2">
+                    <span className={labelCls}>Received into (account)</span>
+                    <select
+                      className={inputCls}
+                      value={payAccountId}
+                      onChange={(e) => setPayAccountId(e.target.value)}
+                    >
+                      <option value="">— Not specified —</option>
+                      {accountChoices.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 <label className="block sm:col-span-2">
                   <span className={labelCls}>Date</span>
                   <input
@@ -139,6 +167,7 @@ export function PlotPaymentSheet({
                     paymentMode: payMode.trim() || '—',
                     paidDate: payDate.trim() || new Date().toISOString().slice(0, 10),
                     notes: payNotes.trim() || null,
+                    accountId: showAccount ? payAccountId.trim() || null : undefined,
                   })
                 }
                 className="w-full rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"

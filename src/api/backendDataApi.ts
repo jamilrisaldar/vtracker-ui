@@ -375,6 +375,7 @@ function normalizePlotSalePayment(raw: Record<string, unknown>): PlotSalePayment
     amount: asOptionalNumber(raw.amount),
     notes:
       typeof raw.notes === 'string' && raw.notes.trim() !== '' ? raw.notes : undefined,
+    accountId: raw.accountId != null ? String(raw.accountId) : undefined,
     createdAt: String(raw.createdAt ?? ''),
     updatedAt: String(raw.updatedAt ?? ''),
   }
@@ -467,6 +468,7 @@ export async function createPlotSalePayment(
     paidDate: string
     amount?: number | null
     notes?: string | null
+    accountId?: string | null
   },
 ): Promise<PlotSalePayment> {
   const raw = await apiRequest<Record<string, unknown>>(
@@ -478,6 +480,7 @@ export async function createPlotSalePayment(
         paidDate: input.paidDate,
         amount: input.amount ?? null,
         notes: input.notes?.trim() ?? null,
+        accountId: input.accountId ?? null,
       }),
     },
   )
@@ -493,6 +496,7 @@ export async function updatePlotSalePayment(
     paidDate: string
     amount: number | null
     notes: string | null
+    accountId: string | null
   }>,
 ): Promise<PlotSalePayment> {
   const body: Record<string, unknown> = {}
@@ -500,6 +504,7 @@ export async function updatePlotSalePayment(
   if (patch.paidDate !== undefined) body.paidDate = patch.paidDate
   if (patch.amount !== undefined) body.amount = patch.amount
   if (patch.notes !== undefined) body.notes = patch.notes?.trim() ?? null
+  if (patch.accountId !== undefined) body.accountId = patch.accountId
   const raw = await apiRequest<Record<string, unknown>>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/plots/${encodeURIComponent(plotId)}/sale/payments/${encodeURIComponent(paymentId)}`,
     { method: 'PATCH', body: JSON.stringify(body) },

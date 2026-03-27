@@ -735,6 +735,7 @@ export async function createPlotSalePayment(
     paidDate: string
     amount?: number | null
     notes?: string | null
+    accountId?: string | null
   },
 ): Promise<PlotSalePayment> {
   await delay()
@@ -749,6 +750,10 @@ export async function createPlotSalePayment(
     throw new Error('Payment transactions are locked for this sale.')
   }
   const g = mockFindSaleGroup(db, projectId, plotId)
+  if (input.accountId != null && input.accountId !== '') {
+    const acc = db.accounts.find((a) => a.id === input.accountId)
+    if (!acc) throw new Error('Unknown account')
+  }
   const pay: PlotSalePayment = {
     id: id('plotpay'),
     plotId: g ? undefined : plotId,
@@ -757,6 +762,7 @@ export async function createPlotSalePayment(
     paidDate: input.paidDate.slice(0, 10),
     amount: input.amount ?? undefined,
     notes: input.notes?.trim() || undefined,
+    accountId: input.accountId?.trim() || undefined,
     createdAt: ts,
     updatedAt: ts,
   }
@@ -787,6 +793,7 @@ export async function updatePlotSalePayment(
     paidDate: string
     amount: number | null
     notes: string | null
+    accountId: string | null
   }>,
 ): Promise<PlotSalePayment> {
   await delay()
@@ -808,6 +815,15 @@ export async function updatePlotSalePayment(
   if (patch.paidDate !== undefined) pay.paidDate = patch.paidDate.slice(0, 10)
   if (patch.amount !== undefined) pay.amount = patch.amount ?? undefined
   if (patch.notes !== undefined) pay.notes = patch.notes?.trim() || undefined
+  if (patch.accountId !== undefined) {
+    if (patch.accountId != null && patch.accountId !== '') {
+      const acc = db.accounts.find((a) => a.id === patch.accountId)
+      if (!acc) throw new Error('Unknown account')
+      pay.accountId = patch.accountId
+    } else {
+      pay.accountId = undefined
+    }
+  }
   pay.updatedAt = ts
   proj.updatedAt = ts
   saveDb(db)

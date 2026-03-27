@@ -217,6 +217,7 @@ export async function createPlotSalePayment(
     paidDate: string
     amount?: number | null
     notes?: string | null
+    accountId?: string | null
   },
 ): Promise<PlotSalePayment> {
   if (isBackendAuthEnabled()) return backend.createPlotSalePayment(plotId, projectId, input)
@@ -232,6 +233,7 @@ export async function updatePlotSalePayment(
     paidDate: string
     amount: number | null
     notes: string | null
+    accountId: string | null
   }>,
 ): Promise<PlotSalePayment> {
   if (isBackendAuthEnabled()) {

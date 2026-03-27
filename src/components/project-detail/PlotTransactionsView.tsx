@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as api from '../../api/dataApi'
-import type { LandPlot, PlotSale, PlotSaleAgentPayment, PlotSalePayment } from '../../types'
+import type { Account, LandPlot, PlotSale, PlotSaleAgentPayment, PlotSalePayment } from '../../types'
 import { MoneyInrShorthand } from '../MoneyInrShorthand'
 import { PencilIcon, TrashIcon, iconBtnClass } from '../accounts/ledgerIcons'
 import { PlotPaymentSheet } from './PlotPaymentSheet'
@@ -41,7 +41,9 @@ export function PlotTransactionsView({
   const [sheetInitialMode, setSheetInitialMode] = useState('')
   const [sheetInitialDate, setSheetInitialDate] = useState('')
   const [sheetInitialNotes, setSheetInitialNotes] = useState('')
+  const [sheetInitialAccountId, setSheetInitialAccountId] = useState('')
   const [savingPayment, setSavingPayment] = useState(false)
+  const [accounts, setAccounts] = useState<Account[]>([])
 
   const [agentSheetOpen, setAgentSheetOpen] = useState(false)
   const [agentSheetMode, setAgentSheetMode] = useState<'add' | 'edit'>('add')
@@ -74,6 +76,21 @@ export function PlotTransactionsView({
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    let cancelled = false
+    void api
+      .listAccounts()
+      .then((rows) => {
+        if (!cancelled) setAccounts(rows)
+      })
+      .catch(() => {
+        if (!cancelled) setAccounts([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (sale?.paymentsLocked === true && paymentSheetOpen) {
@@ -117,6 +134,17 @@ export function PlotTransactionsView({
   const hasNegotiated = negotiated != null && Number.isFinite(negotiated)
   const outstanding = hasNegotiated ? negotiated - buyerPaymentAgg.total : null
 
+  const buyerAccountChoices = useMemo(
+    () =>
+      accounts.map((a) => ({
+        id: a.id,
+        label: `${a.name} (${a.kind}) · ${a.currency}`,
+      })),
+    [accounts],
+  )
+
+  const accountNameById = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts])
+
   const openAddPayment = () => {
     onError(null)
     setPaymentSheetMode('add')
@@ -125,6 +153,7 @@ export function PlotTransactionsView({
     setSheetInitialMode('')
     setSheetInitialDate('')
     setSheetInitialNotes('')
+    setSheetInitialAccountId('')
     setPaymentSheetOpen(true)
   }
 
@@ -136,6 +165,7 @@ export function PlotTransactionsView({
     setSheetInitialMode(p.paymentMode ?? '')
     setSheetInitialDate(p.paidDate ?? '')
     setSheetInitialNotes(p.notes ?? '')
+    setSheetInitialAccountId(p.accountId ?? '')
     setPaymentSheetOpen(true)
   }
 
@@ -149,6 +179,7 @@ export function PlotTransactionsView({
     paymentMode: string
     paidDate: string
     notes?: string | null
+    accountId?: string | null
   }) => {
     setSavingPayment(true)
     onError(null)
@@ -159,6 +190,7 @@ export function PlotTransactionsView({
           paidDate: data.paidDate,
           amount: data.amount,
           notes: data.notes,
+          accountId: data.accountId ?? null,
         })
         setPayments((prev) => [row, ...prev])
       } else if (editingPaymentId) {
@@ -167,6 +199,7 @@ export function PlotTransactionsView({
           paymentMode: data.paymentMode,
           paidDate: data.paidDate,
           notes: data.notes ?? null,
+          accountId: data.accountId ?? null,
         })
         setPayments((prev) => prev.map((x) => (x.id === row.id ? row : x)))
       }
@@ -224,6 +257,7 @@ export function PlotTransactionsView({
     paymentMode: string
     paidDate: string
     notes?: string | null
+    accountId?: string | null
   }) => {
     setSavingAgentPayment(true)
     onError(null)
@@ -272,7 +306,7 @@ export function PlotTransactionsView({
     }
   }
 
-  const buyerColCount = paymentsReadOnly ? 4 : 6
+  const buyerColCount = paymentsReadOnly ? 5 : 7
 
   return (
     <div className="relative min-h-[min(70vh,28rem)]">
@@ -464,6 +498,7 @@ export function PlotTransactionsView({
                     ) : null}
                     <th className="px-3 py-2 text-right tabular-nums">Amount</th>
                     <th className="px-3 py-2">Mode</th>
+                    <th className="min-w-[8rem] px-3 py-2">Account</th>
                     <th className="px-3 py-2">Date</th>
                     <th className="px-3 py-2">Notes</th>
                     {!paymentsReadOnly ? (
@@ -499,6 +534,9 @@ export function PlotTransactionsView({
                           <MoneyInrShorthand amount={p.amount ?? null} currency={currency} />
                         </td>
                         <td className="px-3 py-2">{p.paymentMode?.trim() || '—'}</td>
+                        <td className="max-w-[14rem] truncate px-3 py-2 text-slate-700" title={p.accountId ? accountNameById.get(p.accountId) : undefined}>
+                          {p.accountId ? (accountNameById.get(p.accountId) ?? '—') : '—'}
+                        </td>
                         <td className="px-3 py-2">{p.paidDate?.trim() || '—'}</td>
                         <td className="px-3 py-2 text-slate-600">{p.notes?.trim() || '—'}</td>
                         {!paymentsReadOnly ? (
@@ -617,6 +655,8 @@ export function PlotTransactionsView({
         initialMode={sheetInitialMode}
         initialPaidDate={sheetInitialDate}
         initialNotes={sheetInitialNotes}
+        initialAccountId={sheetInitialAccountId}
+        accountChoices={buyerAccountChoices}
         onSubmit={submitPaymentSheet}
         readOnly={paymentsReadOnly}
       />

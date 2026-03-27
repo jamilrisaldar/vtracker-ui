@@ -142,6 +142,8 @@ export interface PlotSalePayment {
   paidDate: string
   amount?: number
   notes?: string
+  /** Ledger account where the payment was received (optional). */
+  accountId?: string
   createdAt: string
   updatedAt: string
 }
