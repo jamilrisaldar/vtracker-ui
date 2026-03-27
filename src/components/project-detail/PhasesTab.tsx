@@ -4,6 +4,7 @@ import type { Phase, PhaseStatus } from '../../types'
 import { formatDate, formatMoney } from '../../utils/format'
 import { PhaseAddEditPanel } from '../PhaseAddEditPanel'
 import { phaseStatusOptions, phaseTableRowClassName } from './constants'
+import { PhasesKanbanBoard } from './PhasesKanbanBoard'
 
 const iconBtnClass =
   'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'
@@ -49,6 +50,7 @@ export function PhasesTab({
   const [deleteTarget, setDeleteTarget] = useState<Phase | null>(null)
   const [deleteNameInput, setDeleteNameInput] = useState('')
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [phasesView, setPhasesView] = useState<'table' | 'kanban'>('table')
 
   const openAdd = () => {
     if (reordering) return
@@ -176,7 +178,35 @@ export function PhasesTab({
         </div>
       ) : null}
 
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div
+          className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5"
+          role="group"
+          aria-label="Phases view"
+        >
+          <button
+            type="button"
+            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+              phasesView === 'table'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            onClick={() => setPhasesView('table')}
+          >
+            Table
+          </button>
+          <button
+            type="button"
+            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+              phasesView === 'kanban'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            onClick={() => setPhasesView('kanban')}
+          >
+            Kanban
+          </button>
+        </div>
         <button
           type="button"
           disabled={reordering}
@@ -205,55 +235,67 @@ export function PhasesTab({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-[0.65rem] uppercase leading-tight text-slate-500">
-            <tr>
-              <th className="w-11 min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-1.5 py-2" scope="col">
-                <span className="sr-only">Edit</span>
-              </th>
-              <th className="w-[4.25rem] min-w-[4.25rem] whitespace-nowrap px-1 py-2" scope="col">
-                Order
-              </th>
-              <th className="px-3 py-2">Phase</th>
-              <th className="px-3 py-2">Start</th>
-              <th className="px-3 py-2">End</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="whitespace-nowrap px-3 py-2">Est.</th>
-              <th className="whitespace-nowrap px-3 py-2">Actual</th>
-              <th className="px-3 py-2">Notes</th>
-              <th className="w-11 min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-1.5 py-2">
-                <span className="sr-only">Remove</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {phases.length === 0 ? (
+      {phasesView === 'kanban' ? (
+        <PhasesKanbanBoard
+          projectId={projectId}
+          phases={sortedPhases}
+          onRefresh={onRefresh}
+          onError={onError}
+          onEdit={openEdit}
+          onRequestDelete={openDeletePhase}
+          actionsDisabled={actionsDisabled}
+        />
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <table className="min-w-full text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-[0.65rem] uppercase leading-tight text-slate-500">
               <tr>
-                <td colSpan={10} className="px-3 py-6 text-center text-slate-500">
-                  No phases yet.
-                </td>
+                <th className="w-11 min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-1.5 py-2" scope="col">
+                  <span className="sr-only">Edit</span>
+                </th>
+                <th className="w-[4.25rem] min-w-[4.25rem] whitespace-nowrap px-1 py-2" scope="col">
+                  Order
+                </th>
+                <th className="px-3 py-2">Phase</th>
+                <th className="px-3 py-2">Start</th>
+                <th className="px-3 py-2">End</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="whitespace-nowrap px-3 py-2">Est.</th>
+                <th className="whitespace-nowrap px-3 py-2">Actual</th>
+                <th className="px-3 py-2">Notes</th>
+                <th className="w-11 min-w-[2.75rem] max-w-[2.75rem] whitespace-nowrap px-1.5 py-2">
+                  <span className="sr-only">Remove</span>
+                </th>
               </tr>
-            ) : (
-              sortedPhases.map((ph) => (
-                <PhaseRow
-                  key={ph.id}
-                  projectId={projectId}
-                  phase={ph}
-                  sortedPhases={sortedPhases}
-                  reordering={reordering}
-                  setReordering={setReordering}
-                  onRefresh={onRefresh}
-                  onError={onError}
-                  onEdit={openEdit}
-                  onRequestDelete={openDeletePhase}
-                  actionsDisabled={actionsDisabled}
-                />
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {phases.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="px-3 py-6 text-center text-slate-500">
+                    No phases yet.
+                  </td>
+                </tr>
+              ) : (
+                sortedPhases.map((ph) => (
+                  <PhaseRow
+                    key={ph.id}
+                    projectId={projectId}
+                    phase={ph}
+                    sortedPhases={sortedPhases}
+                    reordering={reordering}
+                    setReordering={setReordering}
+                    onRefresh={onRefresh}
+                    onError={onError}
+                    onEdit={openEdit}
+                    onRequestDelete={openDeletePhase}
+                    actionsDisabled={actionsDisabled}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
