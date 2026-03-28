@@ -271,6 +271,7 @@ export function ProjectDetailPage() {
         {tab === 'plots' && (
           <PlotsTab
             projectId={projectId}
+            projectName={project.name}
             plots={plots}
             onRefresh={refreshPlots}
             onError={setErr}

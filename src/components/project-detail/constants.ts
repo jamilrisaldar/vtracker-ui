@@ -66,7 +66,7 @@ const PLOT_STATUS_ROW_BG: Record<PlotStatus, string> = {
   open: 'bg-white hover:bg-slate-50/90',
   negotiating: 'bg-sky-50 hover:bg-sky-100/75',
   conditional_sale: 'bg-violet-50 hover:bg-violet-100/75',
-  sold: 'bg-emerald-50 hover:bg-emerald-100/75',
+  sold: 'bg-emerald-100 hover:bg-emerald-100/75',
 }
 
 /** Matches row tone for sticky Plot # cells (use with `group` on the table row). */

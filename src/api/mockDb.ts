@@ -51,6 +51,7 @@ function emptyDb(): MockDatabase {
     plotSales: [],
     plotSaleGroups: [],
     plotSalePayments: [],
+    plotSaleAgentPayments: [],
     vendors: [],
     invoices: [],
     payments: [],

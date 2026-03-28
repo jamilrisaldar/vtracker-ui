@@ -21,6 +21,7 @@ import type {
   ProjectDocument,
   ProjectReport,
   ProjectStatus,
+  PlotSaleReportResponse,
   User,
   Vendor,
 } from '../types'
@@ -626,6 +627,215 @@ export async function getPlotSale(plotId: string, projectId: string): Promise<Pl
   const g = mockFindSaleGroup(db, projectId, plotId)
   if (g) return mockPlotSaleFromGroup(g, plotId)
   return db.plotSales.find((s) => s.plotId === plotId) ?? null
+}
+
+const MOCK_PLOT_SALE_FISCAL_NOTE =
+  'Fiscal: sold single-plot sales and combined multi-plot sales (one row per purchase) whose subregistrar registration date is in the range. Payment totals are net of refunds (all buyer payments to date for that sale).'
+
+const MOCK_PLOT_SALE_ACTIVITY_NOTE =
+  'Activity: single-plot and combined sales (one row per purchase) with buyer payment lines paid in the range. Payment totals are net of refunds for that window only.'
+
+const MOCK_PLOT_SALE_COMBINED_NOTE =
+  ' Combined plot sales appear once per purchase; plot numbers are listed together in the Plot # column.'
+
+function mockReportDateInRange(d: string | undefined, start: string, end: string): boolean {
+  if (!d?.trim()) return false
+  const x = d.trim().slice(0, 10)
+  return x >= start && x <= end
+}
+
+function mockNetBuyerPayment(p: PlotSalePayment): number {
+  const raw = p.amount ?? 0
+  return p.isRefund === true ? -raw : raw
+}
+
+function mockAggBuyerPayments(
+  db: MockDatabase,
+  pred: (p: PlotSalePayment) => boolean,
+): Record<string, number> {
+  const m: Record<string, number> = {}
+  for (const p of db.plotSalePayments) {
+    if (!pred(p)) continue
+    const mode = p.paymentMode?.trim() || 'Other'
+    m[mode] = (m[mode] ?? 0) + mockNetBuyerPayment(p)
+  }
+  return m
+}
+
+export async function getPlotSaleReport(
+  projectId: string,
+  params: { report: 'fiscal' | 'activity'; startDate: string; endDate: string },
+): Promise<PlotSaleReportResponse> {
+  await delay()
+  if (!(await getProject(projectId))) throw new Error('Not found')
+  const startDate = params.startDate.trim().slice(0, 10)
+  const endDate = params.endDate.trim().slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    throw new Error('Invalid date range')
+  }
+  if (startDate > endDate) throw new Error('startDate must be on or before endDate')
+  const db = loadDb()
+  const { report } = params
+
+  type Base = {
+    rowKey: string
+    plotNumber: string | null
+    purchaserName: string | null
+    reg: string | null
+    negotiatedFinalPrice: number | null
+    currency: string
+    groupId: string | null
+    isCombined: boolean
+  }
+
+  function combinedPlotNumberLabel(g: CombinedPlotSaleGroup): string | null {
+    const labels = g.plotIds
+      .map((pid) => db.plots.find((p) => p.id === pid)?.plotNumber?.trim())
+      .filter((x): x is string => !!x)
+    if (labels.length === 0) return null
+    return [...new Set(labels)].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).join(', ')
+  }
+
+  let bases: Base[] = []
+
+  if (report === 'fiscal') {
+    for (const plot of db.plots) {
+      if (plot.projectId !== projectId || plot.status !== 'sold') continue
+      if (mockFindSaleGroup(db, projectId, plot.id)) continue
+      const s = db.plotSales.find((x) => x.plotId === plot.id)
+      if (!mockReportDateInRange(s?.subregistrarRegistrationDate, startDate, endDate)) continue
+      bases.push({
+        rowKey: plot.id,
+        plotNumber: plot.plotNumber?.trim() || null,
+        purchaserName: s?.purchaserName?.trim() || null,
+        reg: s?.subregistrarRegistrationDate?.trim().slice(0, 10) ?? null,
+        negotiatedFinalPrice: s?.negotiatedFinalPrice ?? null,
+        currency: (s?.currency || plot.currency || 'INR').trim() || 'INR',
+        groupId: null,
+        isCombined: false,
+      })
+    }
+    for (const g of db.plotSaleGroups) {
+      if (g.projectId !== projectId) continue
+      if (!mockReportDateInRange(g.subregistrarRegistrationDate, startDate, endDate)) continue
+      const allSold = g.plotIds.every((pid) => {
+        const p = db.plots.find((x) => x.id === pid && x.projectId === projectId)
+        return p?.status === 'sold'
+      })
+      if (!allSold) continue
+      const plot0 = db.plots.find((p) => p.id === g.plotIds[0])
+      bases.push({
+        rowKey: g.id,
+        plotNumber: combinedPlotNumberLabel(g),
+        purchaserName: g.purchaserName?.trim() || null,
+        reg: g.subregistrarRegistrationDate?.trim().slice(0, 10) ?? null,
+        negotiatedFinalPrice: g.negotiatedFinalPrice ?? null,
+        currency: (g.currency || plot0?.currency || 'INR').trim() || 'INR',
+        groupId: g.id,
+        isCombined: true,
+      })
+    }
+    bases.sort((a, b) => {
+      const c = (a.reg ?? '').localeCompare(b.reg ?? '')
+      if (c !== 0) return c
+      return (a.plotNumber ?? '').localeCompare(b.plotNumber ?? '', undefined, { numeric: true })
+    })
+  } else {
+    const activeGroupIds = new Set<string>()
+    const activePlotIds = new Set<string>()
+    for (const pay of db.plotSalePayments) {
+      const pd = pay.paidDate.slice(0, 10)
+      if (pd < startDate || pd > endDate) continue
+      if (pay.saleGroupId) {
+        const g = db.plotSaleGroups.find((x) => x.id === pay.saleGroupId && x.projectId === projectId)
+        if (g) activeGroupIds.add(g.id)
+      } else if (pay.plotId) {
+        const plot = db.plots.find((p) => p.id === pay.plotId && p.projectId === projectId)
+        if (plot && !mockFindSaleGroup(db, projectId, pay.plotId)) {
+          activePlotIds.add(pay.plotId)
+        }
+      }
+    }
+    for (const gid of activeGroupIds) {
+      const g = db.plotSaleGroups.find((x) => x.id === gid && x.projectId === projectId)
+      if (!g) continue
+      const plot0 = db.plots.find((p) => p.id === g.plotIds[0])
+      bases.push({
+        rowKey: g.id,
+        plotNumber: combinedPlotNumberLabel(g),
+        purchaserName: g.purchaserName?.trim() || null,
+        reg: g.subregistrarRegistrationDate?.trim().slice(0, 10) ?? null,
+        negotiatedFinalPrice: g.negotiatedFinalPrice ?? null,
+        currency: (g.currency || plot0?.currency || 'INR').trim() || 'INR',
+        groupId: g.id,
+        isCombined: true,
+      })
+    }
+    for (const plotId of activePlotIds) {
+      const plot = db.plots.find((p) => p.id === plotId && p.projectId === projectId)
+      if (!plot) continue
+      const s = db.plotSales.find((x) => x.plotId === plotId)
+      bases.push({
+        rowKey: plotId,
+        plotNumber: plot.plotNumber?.trim() || null,
+        purchaserName: s?.purchaserName?.trim() || null,
+        reg: s?.subregistrarRegistrationDate?.trim().slice(0, 10) ?? null,
+        negotiatedFinalPrice: s?.negotiatedFinalPrice ?? null,
+        currency: (s?.currency || plot.currency || 'INR').trim() || 'INR',
+        groupId: null,
+        isCombined: false,
+      })
+    }
+    bases.sort((a, b) =>
+      (a.plotNumber ?? '').localeCompare(b.plotNumber ?? '', undefined, { numeric: true }),
+    )
+  }
+
+  const rows = bases.map((b) => {
+    const dateOk = (pd: string) => pd >= startDate && pd <= endDate
+    const payMap =
+      b.groupId != null
+        ? mockAggBuyerPayments(
+            db,
+            (p) =>
+              p.saleGroupId === b.groupId &&
+              (report === 'fiscal' ||
+                (p.paidDate.trim() !== '' && dateOk(p.paidDate.slice(0, 10)))),
+          )
+        : mockAggBuyerPayments(
+            db,
+            (p) =>
+              p.plotId === b.rowKey &&
+              !p.saleGroupId &&
+              (report === 'fiscal' ||
+                (p.paidDate.trim() !== '' && dateOk(p.paidDate.slice(0, 10)))),
+          )
+    return {
+      plotId: b.isCombined ? b.groupId! : b.rowKey,
+      plotNumber: b.plotNumber,
+      purchaserName: b.purchaserName,
+      subregistrarRegistrationDate: b.reg,
+      negotiatedFinalPrice: b.negotiatedFinalPrice,
+      currency: b.currency,
+      combinedGroupId: b.groupId,
+      isCombinedSale: b.isCombined,
+      paymentTotalsByMode: payMap,
+    }
+  })
+
+  const hasCombined = rows.some((r) => r.isCombinedSale)
+  const note =
+    (report === 'fiscal' ? MOCK_PLOT_SALE_FISCAL_NOTE : MOCK_PLOT_SALE_ACTIVITY_NOTE) +
+    (hasCombined ? MOCK_PLOT_SALE_COMBINED_NOTE : '')
+
+  return {
+    report,
+    startDate,
+    endDate,
+    projectId,
+    rows,
+    note,
+  }
 }
 
 export async function upsertPlotSale(

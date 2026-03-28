@@ -156,6 +156,34 @@ export interface PlotSalePayment {
 /** Commission paid to the selling agent (same shape as buyer payment lines). */
 export type PlotSaleAgentPayment = PlotSalePayment
 
+export type PlotSaleReportKind = 'fiscal' | 'activity'
+
+/** One row in a plot sale fiscal or activity export. */
+export interface PlotSaleReportRow {
+  /** Single-plot id, or combined sale group id when `isCombinedSale` is true. */
+  plotId: string
+  plotNumber: string | null
+  purchaserName: string | null
+  /** ISO date YYYY-MM-DD */
+  subregistrarRegistrationDate: string | null
+  negotiatedFinalPrice: number | null
+  currency: string
+  combinedGroupId: string | null
+  /** True when this row is one combined multi-plot purchase (plot numbers aggregated). */
+  isCombinedSale: boolean
+  /** Net buyer receipts per payment mode (refunds subtract). */
+  paymentTotalsByMode: Record<string, number>
+}
+
+export interface PlotSaleReportResponse {
+  report: PlotSaleReportKind
+  startDate: string
+  endDate: string
+  projectId: string
+  rows: PlotSaleReportRow[]
+  note: string
+}
+
 export interface Vendor {
   id: string
   projectId: string

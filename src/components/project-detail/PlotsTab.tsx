@@ -11,6 +11,7 @@ import {
 import { PlotAddEditPanel } from '../PlotAddEditPanel'
 import { CombinePlotsSalePanel } from './CombinePlotsSalePanel'
 import { PlotTransactionsView } from './PlotTransactionsView'
+import { PlotSaleReportsPanel } from './PlotSaleReportsPanel'
 import {
   plotStatusLabel,
   plotTableRowClassName,
@@ -196,12 +197,15 @@ function plotAmountKindLabel(status: PlotStatus): string {
 
 export function PlotsTab({
   projectId,
+  projectName,
   plots,
   onRefresh,
   onError,
   readOnly = false,
 }: {
   projectId: string
+  /** Project display name (report exports). */
+  projectName: string
   plots: LandPlot[]
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
@@ -217,6 +221,7 @@ export function PlotsTab({
   const [combinePanel, setCombinePanel] = useState<
     null | 'create' | { editGroupId: string }
   >(null)
+  const [reportsOpen, setReportsOpen] = useState(false)
 
   const openCombinedSaleEditor = (groupId: string) => {
     setCombinePanel({ editGroupId: groupId })
@@ -281,6 +286,13 @@ export function PlotsTab({
           >
             ← Back to plots
           </button>
+          <button
+            type="button"
+            onClick={() => setReportsOpen(true)}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+          >
+            Reports
+          </button>
         </div>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -295,28 +307,38 @@ export function PlotsTab({
               history. Those rows show a violet badge in the table.
             </p>
           </div>
-          {!readOnly ? (
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setCopyFromPlot(null)
-                  setPanelPlot(null)
-                  setPanelMode('add')
-                }}
-                className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-              >
-                Add plot
-              </button>
-              <button
-                type="button"
-                onClick={() => setCombinePanel('create')}
-                className="rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900 hover:bg-violet-100"
-              >
-                Combine plots for sale
-              </button>
-            </div>
-          ) : null}
+          <div className="flex flex-wrap gap-2">
+
+            {!readOnly ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCopyFromPlot(null)
+                    setPanelPlot(null)
+                    setPanelMode('add')
+                  }}
+                  className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+                >
+                  Add plot
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCombinePanel('create')}
+                  className="rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900 hover:bg-violet-100"
+                >
+                  Combine plots for sale
+                </button>
+              </>
+            ) : null}
+                        <button
+              type="button"
+              onClick={() => setReportsOpen(true)}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+            >
+              Reports
+            </button>
+          </div>
         </div>
       )}
 
@@ -388,6 +410,15 @@ export function PlotsTab({
         </div>
       ) : null}
 
+      {reportsOpen ? (
+        <PlotSaleReportsPanel
+          projectId={projectId}
+          projectName={projectName}
+          onClose={() => setReportsOpen(false)}
+          onError={onError}
+        />
+      ) : null}
+
       {combinePanel ? (
         <div className="fixed inset-0 z-[56] bg-slate-900/40">
           <div className="absolute inset-y-0 right-0 w-full max-w-xl">
@@ -446,7 +477,7 @@ export function PlotsTab({
           </div>
         ) : (
           <>
-        <div className="max-h-[min(70vh,28rem)] overflow-auto overscroll-contain">
+        <div className="max-h-[min(70vh,35rem)] overflow-auto overscroll-contain">
           <table className="min-w-full text-left text-sm">
             <thead className="text-xs uppercase text-slate-500">
               <tr>

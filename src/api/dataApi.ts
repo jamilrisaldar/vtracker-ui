@@ -23,13 +23,14 @@ import type {
   PlotSalePayment,
   ProjectReport,
   ProjectStatus,
+  PlotSaleReportResponse,
   Vendor,
 } from '../types'
 import { isBackendAuthEnabled } from '../config'
 import * as backend from './backendDataApi'
 import * as mock from './mockApi'
 
-export type { ProjectReport } from '../types'
+export type { ProjectReport, PlotSaleReportResponse, PlotSaleReportKind } from '../types'
 
 export async function listProjects(): Promise<Project[]> {
   if (isBackendAuthEnabled()) return backend.listProjects()
@@ -363,6 +364,14 @@ export async function deleteCombinedPlotSaleGroup(
     return backend.deleteCombinedPlotSaleGroup(groupId, projectId)
   }
   return mock.deleteCombinedPlotSaleGroup(groupId, projectId)
+}
+
+export async function getPlotSaleReport(
+  projectId: string,
+  params: { report: 'fiscal' | 'activity'; startDate: string; endDate: string },
+): Promise<PlotSaleReportResponse> {
+  if (isBackendAuthEnabled()) return backend.getPlotSaleReport(projectId, params)
+  return mock.getPlotSaleReport(projectId, params)
 }
 
 export async function listVendors(projectId: string): Promise<Vendor[]> {

@@ -24,6 +24,7 @@ import type {
   ProjectDocument,
   ProjectReport,
   ProjectStatus,
+  PlotSaleReportResponse,
   Vendor,
 } from '../types'
 import { apiUrl } from '../config'
@@ -1201,4 +1202,73 @@ export async function getProjectReport(projectId: string): Promise<ProjectReport
     invoiceCount: asNum(raw.invoiceCount, 0),
     paymentCount: asNum(raw.paymentCount, 0),
   }
+}
+
+function normalizePlotSaleReport(raw: Record<string, unknown>): PlotSaleReportResponse {
+  const rowsIn = Array.isArray(raw.rows) ? raw.rows : []
+  const rows = rowsIn.map((row) => {
+    const r = row as Record<string, unknown>
+    const modesRaw = r.paymentTotalsByMode ?? r.payment_totals_by_mode
+    const paymentTotalsByMode: Record<string, number> = {}
+    if (modesRaw && typeof modesRaw === 'object' && !Array.isArray(modesRaw)) {
+      for (const [k, v] of Object.entries(modesRaw as Record<string, unknown>)) {
+        paymentTotalsByMode[k] = asNum(v)
+      }
+    }
+    return {
+      plotId: String(r.plotId ?? r.plot_id ?? ''),
+      plotNumber:
+        r.plotNumber != null && r.plotNumber !== ''
+          ? String(r.plotNumber)
+          : r.plot_number != null && r.plot_number !== ''
+            ? String(r.plot_number)
+            : null,
+      purchaserName:
+        r.purchaserName != null && String(r.purchaserName).trim() !== ''
+          ? String(r.purchaserName).trim()
+          : r.purchaser_name != null && String(r.purchaser_name).trim() !== ''
+            ? String(r.purchaser_name).trim()
+            : null,
+      subregistrarRegistrationDate: asOptionalIsoDate(
+        r.subregistrarRegistrationDate ?? r.subregistrar_registration_date,
+      ) ?? null,
+      negotiatedFinalPrice: asOptionalNumber(r.negotiatedFinalPrice ?? r.negotiated_final_price) ?? null,
+      currency: String(r.currency ?? 'INR').trim() || 'INR',
+      combinedGroupId:
+        r.combinedGroupId != null && r.combinedGroupId !== ''
+          ? String(r.combinedGroupId)
+          : r.combined_group_id != null && r.combined_group_id !== ''
+            ? String(r.combined_group_id)
+            : null,
+      isCombinedSale:
+        r.isCombinedSale === true ||
+        r.is_combined_sale === true ||
+        r.is_combined === true,
+      paymentTotalsByMode,
+    }
+  })
+  const rep = raw.report === 'activity' ? 'activity' : 'fiscal'
+  return {
+    report: rep,
+    startDate: String(raw.startDate ?? raw.start_date ?? '').slice(0, 10),
+    endDate: String(raw.endDate ?? raw.end_date ?? '').slice(0, 10),
+    projectId: String(raw.projectId ?? raw.project_id ?? ''),
+    rows,
+    note: typeof raw.note === 'string' ? raw.note : '',
+  }
+}
+
+export async function getPlotSaleReport(
+  projectId: string,
+  params: { report: 'fiscal' | 'activity'; startDate: string; endDate: string },
+): Promise<PlotSaleReportResponse> {
+  const q = new URLSearchParams({
+    report: params.report,
+    startDate: params.startDate.trim().slice(0, 10),
+    endDate: params.endDate.trim().slice(0, 10),
+  })
+  const raw = await apiRequest<Record<string, unknown>>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/plot-sale-report?${q.toString()}`,
+  )
+  return normalizePlotSaleReport(raw)
 }
