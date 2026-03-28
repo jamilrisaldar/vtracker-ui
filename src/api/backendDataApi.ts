@@ -384,13 +384,16 @@ function normalizePlotSalePayment(raw: Record<string, unknown>): PlotSalePayment
     notes:
       typeof raw.notes === 'string' && raw.notes.trim() !== '' ? raw.notes : undefined,
     accountId: raw.accountId != null ? String(raw.accountId) : undefined,
+    isRefund: raw.isRefund === true,
     createdAt: String(raw.createdAt ?? ''),
     updatedAt: String(raw.updatedAt ?? ''),
   }
 }
 
 function normalizePlotSaleAgentPayment(raw: Record<string, unknown>): PlotSaleAgentPayment {
-  return normalizePlotSalePayment(raw)
+  const b = normalizePlotSalePayment(raw)
+  const { isRefund: _r, ...rest } = b
+  return rest
 }
 
 function normalizeCombinedPlotSaleGroup(raw: Record<string, unknown>): CombinedPlotSaleGroup {
@@ -484,6 +487,7 @@ export async function createPlotSalePayment(
     amount?: number | null
     notes?: string | null
     accountId?: string | null
+    isRefund?: boolean
   },
 ): Promise<PlotSalePayment> {
   const raw = await apiRequest<Record<string, unknown>>(
@@ -496,6 +500,7 @@ export async function createPlotSalePayment(
         amount: input.amount ?? null,
         notes: input.notes?.trim() ?? null,
         accountId: input.accountId ?? null,
+        isRefund: input.isRefund === true,
       }),
     },
   )
@@ -512,6 +517,7 @@ export async function updatePlotSalePayment(
     amount: number | null
     notes: string | null
     accountId: string | null
+    isRefund: boolean
   }>,
 ): Promise<PlotSalePayment> {
   const body: Record<string, unknown> = {}
@@ -520,6 +526,7 @@ export async function updatePlotSalePayment(
   if (patch.amount !== undefined) body.amount = patch.amount
   if (patch.notes !== undefined) body.notes = patch.notes?.trim() ?? null
   if (patch.accountId !== undefined) body.accountId = patch.accountId
+  if (patch.isRefund !== undefined) body.isRefund = Boolean(patch.isRefund)
   const raw = await apiRequest<Record<string, unknown>>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/plots/${encodeURIComponent(plotId)}/sale/payments/${encodeURIComponent(paymentId)}`,
     { method: 'PATCH', body: JSON.stringify(body) },

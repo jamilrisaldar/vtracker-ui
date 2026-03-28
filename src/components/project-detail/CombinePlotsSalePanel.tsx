@@ -475,7 +475,7 @@ export function CombinePlotsSalePanel({
                         <span>
                           <span className="font-medium text-slate-900">
                             {p.plotNumber?.trim()
-                              ? `Plot #${p.plotNumber.trim()}`
+                              ? `${p.plotNumber.trim()}`
                               : `Plot ${p.id.slice(0, 8)}…`}
                           </span>
                           <span className="ml-2 text-slate-500">{plotStatusLabel(p.status)}</span>

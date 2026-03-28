@@ -749,6 +749,7 @@ export async function createPlotSalePayment(
     amount?: number | null
     notes?: string | null
     accountId?: string | null
+    isRefund?: boolean
   },
 ): Promise<PlotSalePayment> {
   await delay()
@@ -776,6 +777,7 @@ export async function createPlotSalePayment(
     amount: input.amount ?? undefined,
     notes: input.notes?.trim() || undefined,
     accountId: input.accountId?.trim() || undefined,
+    isRefund: input.isRefund === true,
     createdAt: ts,
     updatedAt: ts,
   }
@@ -807,6 +809,7 @@ export async function updatePlotSalePayment(
     amount: number | null
     notes: string | null
     accountId: string | null
+    isRefund: boolean
   }>,
 ): Promise<PlotSalePayment> {
   await delay()
@@ -828,6 +831,7 @@ export async function updatePlotSalePayment(
   if (patch.paidDate !== undefined) pay.paidDate = patch.paidDate.slice(0, 10)
   if (patch.amount !== undefined) pay.amount = patch.amount ?? undefined
   if (patch.notes !== undefined) pay.notes = patch.notes?.trim() || undefined
+  if (patch.isRefund !== undefined) pay.isRefund = patch.isRefund === true
   if (patch.accountId !== undefined) {
     if (patch.accountId != null && patch.accountId !== '') {
       const acc = db.accounts.find((a) => a.id === patch.accountId)

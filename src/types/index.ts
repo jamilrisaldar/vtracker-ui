@@ -147,6 +147,8 @@ export interface PlotSalePayment {
   notes?: string
   /** Ledger account where the payment was received (optional). */
   accountId?: string
+  /** Buyer lines only: refund to purchaser (reduces net received). */
+  isRefund?: boolean
   createdAt: string
   updatedAt: string
 }

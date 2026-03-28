@@ -6,12 +6,13 @@ import { CopyIcon, PencilIcon, TrashIcon, iconBtnClass } from '../accounts/ledge
 import { PlotPaymentSheet } from './PlotPaymentSheet'
 import { PlotSaleDetailsSheet } from './PlotSaleDetailsSheet'
 
-/** Row tint + left accent by payment mode (buyer lines table). */
-function buyerPaymentRowClass(mode: string | undefined): string {
+/** Row tint + left accent by payment mode; refunds get a light red inset ring. */
+function buyerPaymentRowClass(mode: string | undefined, isRefund: boolean): string {
   const m = (mode?.trim().toLowerCase() ?? '').replace(/\s+/g, ' ')
   const base = 'border-t border-slate-100 transition-colors'
+  const refundExtra = isRefund ? ' ring-1 ring-inset ring-red-200/90' : ''
   if (!m) {
-    return `${base} border-l-[3px] border-l-slate-300 bg-slate-50/50`
+    return `${base} border-l-[3px] border-l-slate-300 bg-slate-50/50${refundExtra}`
   }
   const rules: [RegExp, string][] = [
     [/\brtgs\b/, 'border-l-sky-500 bg-sky-50/90'],
@@ -26,7 +27,7 @@ function buyerPaymentRowClass(mode: string | undefined): string {
     [/\b(wire|bank\s*transfer)\b/, 'border-l-sky-600 bg-sky-50/80'],
   ]
   for (const [re, tone] of rules) {
-    if (re.test(m)) return `${base} border-l-[3px] ${tone}`
+    if (re.test(m)) return `${base} border-l-[3px] ${tone}${refundExtra}`
   }
   const fallback = [
     'border-l-fuchsia-500 bg-fuchsia-50/85',
@@ -36,7 +37,7 @@ function buyerPaymentRowClass(mode: string | undefined): string {
   ]
   let h = 0
   for (let i = 0; i < m.length; i++) h = (h * 31 + m.charCodeAt(i)) >>> 0
-  return `${base} border-l-[3px] ${fallback[h % fallback.length]}`
+  return `${base} border-l-[3px] ${fallback[h % fallback.length]}${refundExtra}`
 }
 
 export function PlotTransactionsView({
@@ -75,6 +76,7 @@ export function PlotTransactionsView({
   const [sheetInitialDate, setSheetInitialDate] = useState('')
   const [sheetInitialNotes, setSheetInitialNotes] = useState('')
   const [sheetInitialAccountId, setSheetInitialAccountId] = useState('')
+  const [sheetInitialIsRefund, setSheetInitialIsRefund] = useState(false)
   const [savingPayment, setSavingPayment] = useState(false)
   const [paymentSheetFromDuplicate, setPaymentSheetFromDuplicate] = useState(false)
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -155,8 +157,9 @@ export function PlotTransactionsView({
       const mode = (p.paymentMode ?? '').trim() || '—'
       const a = p.amount
       if (a != null && Number.isFinite(a)) {
-        total += a
-        byMode.set(mode, (byMode.get(mode) ?? 0) + a)
+        const signed = p.isRefund === true ? -a : a
+        total += signed
+        byMode.set(mode, (byMode.get(mode) ?? 0) + signed)
       } else {
         linesWithoutAmount += 1
       }
@@ -190,6 +193,7 @@ export function PlotTransactionsView({
     setSheetInitialDate('')
     setSheetInitialNotes('')
     setSheetInitialAccountId('')
+    setSheetInitialIsRefund(false)
     setPaymentSheetOpen(true)
   }
 
@@ -204,6 +208,7 @@ export function PlotTransactionsView({
     setSheetInitialDate(p.paidDate?.trim().slice(0, 10) ?? '')
     setSheetInitialNotes(p.notes ?? '')
     setSheetInitialAccountId(p.accountId ?? '')
+    setSheetInitialIsRefund(p.isRefund === true)
     setPaymentSheetOpen(true)
   }
 
@@ -217,6 +222,7 @@ export function PlotTransactionsView({
     setSheetInitialDate(p.paidDate ?? '')
     setSheetInitialNotes(p.notes ?? '')
     setSheetInitialAccountId(p.accountId ?? '')
+    setSheetInitialIsRefund(p.isRefund === true)
     setPaymentSheetOpen(true)
   }
 
@@ -232,6 +238,7 @@ export function PlotTransactionsView({
     paidDate: string
     notes?: string | null
     accountId?: string | null
+    isRefund?: boolean
   }) => {
     setSavingPayment(true)
     onError(null)
@@ -243,6 +250,7 @@ export function PlotTransactionsView({
           amount: data.amount,
           notes: data.notes,
           accountId: data.accountId ?? null,
+          isRefund: data.isRefund === true,
         })
         setPayments((prev) => [row, ...prev])
       } else if (editingPaymentId) {
@@ -252,6 +260,7 @@ export function PlotTransactionsView({
           paidDate: data.paidDate,
           notes: data.notes ?? null,
           accountId: data.accountId ?? null,
+          isRefund: data.isRefund === true,
         })
         setPayments((prev) => prev.map((x) => (x.id === row.id ? row : x)))
       }
@@ -516,7 +525,7 @@ export function PlotTransactionsView({
                 </div>
                 <div className="mt-2 grid gap-3 border-t border-slate-200 pt-2 sm:grid-cols-2">
                   <div>
-                    <dt className="text-slate-500">Total buyer payments</dt>
+                    <dt className="text-slate-500">Net from buyer</dt>
                     <dd className="mt-0.5 text-base font-semibold tabular-nums text-slate-900">
                       <MoneyInrShorthand amount={buyerPaymentAgg.total} currency={currency} />
                     </dd>
@@ -589,7 +598,7 @@ export function PlotTransactionsView({
                     </tr>
                   ) : (
                     payments.map((p) => (
-                      <tr key={p.id} className={buyerPaymentRowClass(p.paymentMode)}>
+                      <tr key={p.id} className={buyerPaymentRowClass(p.paymentMode, p.isRefund === true)}>
                         {!paymentsReadOnly ? (
                           <td className="px-2 py-2 align-middle">
                             <div className="flex items-center justify-center gap-0.5">
@@ -613,7 +622,21 @@ export function PlotTransactionsView({
                           </td>
                         ) : null}
                         <td className="px-3 py-2 text-right font-medium tabular-nums">
-                          <MoneyInrShorthand amount={p.amount ?? null} currency={currency} />
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            {p.isRefund === true ? (
+                              <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-800">
+                                Refund
+                              </span>
+                            ) : null}
+                            <MoneyInrShorthand
+                              amount={
+                                p.isRefund === true && p.amount != null
+                                  ? -p.amount
+                                  : (p.amount ?? null)
+                              }
+                              currency={currency}
+                            />
+                          </div>
                         </td>
                         <td className="px-3 py-2 font-medium text-slate-800">
                           {p.paymentMode?.trim() || '—'}
@@ -746,6 +769,8 @@ export function PlotTransactionsView({
         initialPaidDate={sheetInitialDate}
         initialNotes={sheetInitialNotes}
         initialAccountId={sheetInitialAccountId}
+        initialIsRefund={sheetInitialIsRefund}
+        buyerRefundToggle
         accountChoices={buyerAccountChoices}
         onSubmit={submitPaymentSheet}
         readOnly={paymentsReadOnly}

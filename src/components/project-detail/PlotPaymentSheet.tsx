@@ -21,6 +21,8 @@ export function PlotPaymentSheet({
   initialPaidDate,
   initialNotes,
   initialAccountId = '',
+  initialIsRefund = false,
+  buyerRefundToggle = false,
   accountChoices,
   onSubmit,
   readOnly = false,
@@ -36,6 +38,10 @@ export function PlotPaymentSheet({
   initialNotes: string
   /** When `accountChoices` is set, initial selected account id (or empty). */
   initialAccountId?: string
+  /** Buyer payments: initial “refund to purchaser” state. */
+  initialIsRefund?: boolean
+  /** When true, show refund checkbox (buyer payments only). */
+  buyerRefundToggle?: boolean
   /** When set, shows “Received into” account dropdown (buyer payments). */
   accountChoices?: { id: string; label: string }[]
   onSubmit: (data: {
@@ -44,6 +50,7 @@ export function PlotPaymentSheet({
     paidDate: string
     notes?: string | null
     accountId?: string | null
+    isRefund?: boolean
   }) => Promise<void>
   readOnly?: boolean
 }) {
@@ -52,6 +59,7 @@ export function PlotPaymentSheet({
   const [payDate, setPayDate] = useState('')
   const [payNotes, setPayNotes] = useState('')
   const [payAccountId, setPayAccountId] = useState('')
+  const [payIsRefund, setPayIsRefund] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -60,8 +68,9 @@ export function PlotPaymentSheet({
       setPayDate(initialPaidDate)
       setPayNotes(initialNotes)
       setPayAccountId(initialAccountId ?? '')
+      setPayIsRefund(initialIsRefund === true)
     }
-  }, [open, initialAmount, initialMode, initialPaidDate, initialNotes, initialAccountId])
+  }, [open, initialAmount, initialMode, initialPaidDate, initialNotes, initialAccountId, initialIsRefund])
 
   const labelCls = 'text-xs font-medium text-slate-600'
   const inputCls = 'mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm'
@@ -102,9 +111,30 @@ export function PlotPaymentSheet({
             <p className="text-xs text-amber-800/90">View-only.</p>
           ) : (
             <>
+              {buyerRefundToggle ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50/90 p-3">
+                  <label className="flex cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1 rounded border-slate-300"
+                      checked={payIsRefund}
+                      onChange={(e) => setPayIsRefund(e.target.checked)}
+                    />
+                    <span className="text-sm text-slate-800">
+                      <span className="font-medium">Refund to purchaser</span>
+                      <span className="mt-1 block text-xs font-normal text-slate-600">
+                        Record money returned to the buyer. The amount is stored as a positive value but
+                        counts against net received in summaries and outstanding balance.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block">
-                  <span className={labelCls}>Amount</span>
+                  <span className={labelCls}>
+                    {payIsRefund && buyerRefundToggle ? 'Refund amount' : 'Amount'}
+                  </span>
                   <input
                     className={inputCls}
                     inputMode="decimal"
@@ -168,6 +198,7 @@ export function PlotPaymentSheet({
                     paidDate: payDate.trim() || new Date().toISOString().slice(0, 10),
                     notes: payNotes.trim() || null,
                     accountId: showAccount ? payAccountId.trim() || null : undefined,
+                    ...(buyerRefundToggle ? { isRefund: payIsRefund } : {}),
                   })
                 }
                 className="w-full rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
