@@ -67,6 +67,7 @@ function mockEnrichPlot(db: MockDatabase, p: LandPlot): LandPlot {
 
 function mockSubstantivePlotSale(s: PlotSale): boolean {
   if (s.purchaserName?.trim()) return true
+  if (s.subregistrarRegistrationDate?.trim()) return true
   if (s.negotiatedFinalPrice != null && s.negotiatedFinalPrice !== 0) return true
   if (s.agentCommissionPercent != null && s.agentCommissionPercent !== 0) return true
   if (s.agentCommissionAmount != null && s.agentCommissionAmount !== 0) return true
@@ -593,6 +594,7 @@ function mockPlotSaleFromGroup(g: CombinedPlotSaleGroup, anchorPlotId: string): 
     id: g.id,
     plotId: anchorPlotId,
     purchaserName: g.purchaserName,
+    subregistrarRegistrationDate: g.subregistrarRegistrationDate,
     negotiatedFinalPrice: g.negotiatedFinalPrice,
     agentCommissionPercent: g.agentCommissionPercent,
     agentCommissionAmount: g.agentCommissionAmount,
@@ -631,6 +633,7 @@ export async function upsertPlotSale(
   projectId: string,
   body: {
     purchaserName?: string | null
+    subregistrarRegistrationDate?: string | null
     negotiatedFinalPrice?: number | null
     agentCommissionPercent?: number | null
     agentCommissionAmount?: number | null
@@ -651,6 +654,9 @@ export async function upsertPlotSale(
   const g = mockFindSaleGroup(db, projectId, plotId)
   if (g) {
     if ('purchaserName' in body) g.purchaserName = body.purchaserName?.trim() || undefined
+    if ('subregistrarRegistrationDate' in body)
+      g.subregistrarRegistrationDate =
+        body.subregistrarRegistrationDate?.trim()?.slice(0, 10) || undefined
     if ('negotiatedFinalPrice' in body) g.negotiatedFinalPrice = body.negotiatedFinalPrice ?? undefined
     if ('agentCommissionPercent' in body) g.agentCommissionPercent = body.agentCommissionPercent ?? undefined
     if ('agentCommissionAmount' in body) g.agentCommissionAmount = body.agentCommissionAmount ?? undefined
@@ -669,6 +675,9 @@ export async function upsertPlotSale(
     const prev = db.plotSales[idx]
     const row: PlotSale = { ...prev }
     if ('purchaserName' in body) row.purchaserName = body.purchaserName?.trim() || undefined
+    if ('subregistrarRegistrationDate' in body)
+      row.subregistrarRegistrationDate =
+        body.subregistrarRegistrationDate?.trim()?.slice(0, 10) || undefined
     if ('negotiatedFinalPrice' in body) row.negotiatedFinalPrice = body.negotiatedFinalPrice ?? undefined
     if ('agentCommissionPercent' in body) row.agentCommissionPercent = body.agentCommissionPercent ?? undefined
     if ('agentCommissionAmount' in body) row.agentCommissionAmount = body.agentCommissionAmount ?? undefined
@@ -687,6 +696,10 @@ export async function upsertPlotSale(
     plotId,
     purchaserName:
       'purchaserName' in body ? body.purchaserName?.trim() || undefined : undefined,
+    subregistrarRegistrationDate:
+      'subregistrarRegistrationDate' in body
+        ? body.subregistrarRegistrationDate?.trim()?.slice(0, 10) || undefined
+        : undefined,
     negotiatedFinalPrice:
       'negotiatedFinalPrice' in body ? body.negotiatedFinalPrice ?? undefined : undefined,
     agentCommissionPercent:
@@ -983,6 +996,15 @@ export async function createCombinedPlotSaleGroup(input: {
   projectId: string
   displayName?: string
   plotIds: string[]
+  purchaserName?: string | null
+  subregistrarRegistrationDate?: string | null
+  negotiatedFinalPrice?: number | null
+  agentCommissionPercent?: number | null
+  agentCommissionAmount?: number | null
+  stampDutyPrice?: number | null
+  agreementPrice?: number | null
+  currency?: string
+  paymentsLocked?: boolean
 }): Promise<CombinedPlotSaleGroup> {
   await delay()
   getUserIdOrThrow()
@@ -1006,13 +1028,22 @@ export async function createCombinedPlotSaleGroup(input: {
     }
   }
   const ts = nowIso()
+  const cur = input.currency?.trim() || 'INR'
   const g: CombinedPlotSaleGroup = {
     id: id('plotgrp'),
     projectId: input.projectId,
     displayName: input.displayName?.trim() ?? '',
     plotIds: ids,
-    currency: 'INR',
-    paymentsLocked: false,
+    purchaserName: input.purchaserName?.trim() || undefined,
+    subregistrarRegistrationDate:
+      input.subregistrarRegistrationDate?.trim()?.slice(0, 10) || undefined,
+    negotiatedFinalPrice: input.negotiatedFinalPrice ?? undefined,
+    agentCommissionPercent: input.agentCommissionPercent ?? undefined,
+    agentCommissionAmount: input.agentCommissionAmount ?? undefined,
+    stampDutyPrice: input.stampDutyPrice ?? undefined,
+    agreementPrice: input.agreementPrice ?? undefined,
+    currency: cur,
+    paymentsLocked: input.paymentsLocked === true,
     createdAt: ts,
     updatedAt: ts,
   }
@@ -1039,7 +1070,19 @@ export async function getCombinedPlotSaleGroup(
 export async function updateCombinedPlotSaleGroup(
   groupId: string,
   projectId: string,
-  patch: { displayName?: string; plotIds?: string[] },
+  patch: {
+    displayName?: string
+    plotIds?: string[]
+    purchaserName?: string | null
+    subregistrarRegistrationDate?: string | null
+    negotiatedFinalPrice?: number | null
+    agentCommissionPercent?: number | null
+    agentCommissionAmount?: number | null
+    stampDutyPrice?: number | null
+    agreementPrice?: number | null
+    currency?: string
+    paymentsLocked?: boolean
+  },
 ): Promise<CombinedPlotSaleGroup> {
   await delay()
   getUserIdOrThrow()
@@ -1050,6 +1093,21 @@ export async function updateCombinedPlotSaleGroup(
   if (!proj) throw new Error('Not found')
   const ts = nowIso()
   if (patch.displayName !== undefined) g.displayName = patch.displayName.trim()
+  if (patch.purchaserName !== undefined)
+    g.purchaserName = patch.purchaserName?.trim() || undefined
+  if (patch.subregistrarRegistrationDate !== undefined)
+    g.subregistrarRegistrationDate =
+      patch.subregistrarRegistrationDate?.trim()?.slice(0, 10) || undefined
+  if (patch.negotiatedFinalPrice !== undefined)
+    g.negotiatedFinalPrice = patch.negotiatedFinalPrice ?? undefined
+  if (patch.agentCommissionPercent !== undefined)
+    g.agentCommissionPercent = patch.agentCommissionPercent ?? undefined
+  if (patch.agentCommissionAmount !== undefined)
+    g.agentCommissionAmount = patch.agentCommissionAmount ?? undefined
+  if (patch.stampDutyPrice !== undefined) g.stampDutyPrice = patch.stampDutyPrice ?? undefined
+  if (patch.agreementPrice !== undefined) g.agreementPrice = patch.agreementPrice ?? undefined
+  if (patch.currency !== undefined) g.currency = patch.currency.trim() || 'INR'
+  if (patch.paymentsLocked !== undefined) g.paymentsLocked = patch.paymentsLocked === true
   if (patch.plotIds !== undefined) {
     const ids = [...new Set(patch.plotIds.filter(Boolean))]
     if (ids.length < 2) throw new Error('A combined sale must include at least two plots')

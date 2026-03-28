@@ -70,6 +70,13 @@ function asOptionalNumber(v: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined
 }
 
+function asOptionalIsoDate(v: unknown): string | undefined {
+  if (v == null) return undefined
+  const s = typeof v === 'string' ? v.trim() : String(v)
+  if (!s || s.length < 10) return undefined
+  return s.slice(0, 10)
+}
+
 /** Normalize API phase JSON (legacy `order` → `displayOrder`, `description` → `notes`). */
 function normalizePhase(raw: Record<string, unknown>): Phase {
   const displayOrder =
@@ -348,6 +355,7 @@ function normalizePlotSale(raw: Record<string, unknown>): PlotSale {
       typeof raw.purchaserName === 'string' && raw.purchaserName.trim() !== ''
         ? raw.purchaserName
         : undefined,
+    subregistrarRegistrationDate: asOptionalIsoDate(raw.subregistrarRegistrationDate),
     negotiatedFinalPrice: asOptionalNumber(raw.negotiatedFinalPrice),
     agentCommissionPercent: asOptionalNumber(raw.agentCommissionPercent),
     agentCommissionAmount: asOptionalNumber(raw.agentCommissionAmount),
@@ -395,12 +403,14 @@ function normalizeCombinedPlotSaleGroup(raw: Record<string, unknown>): CombinedP
       typeof raw.purchaserName === 'string' && raw.purchaserName.trim() !== ''
         ? raw.purchaserName
         : undefined,
+    subregistrarRegistrationDate: asOptionalIsoDate(raw.subregistrarRegistrationDate),
     negotiatedFinalPrice: asOptionalNumber(raw.negotiatedFinalPrice),
     agentCommissionPercent: asOptionalNumber(raw.agentCommissionPercent),
     agentCommissionAmount: asOptionalNumber(raw.agentCommissionAmount),
     stampDutyPrice: asOptionalNumber(raw.stampDutyPrice),
     agreementPrice: asOptionalNumber(raw.agreementPrice),
     currency: typeof raw.currency === 'string' ? raw.currency : 'INR',
+    paymentsLocked: raw.paymentsLocked === true,
     createdAt: String(raw.createdAt ?? ''),
     updatedAt: String(raw.updatedAt ?? ''),
   }
@@ -422,6 +432,7 @@ export async function upsertPlotSale(
   projectId: string,
   body: {
     purchaserName?: string | null
+    subregistrarRegistrationDate?: string | null
     negotiatedFinalPrice?: number | null
     agentCommissionPercent?: number | null
     agentCommissionAmount?: number | null
@@ -433,6 +444,10 @@ export async function upsertPlotSale(
 ): Promise<PlotSale> {
   const payload: Record<string, unknown> = {}
   if ('purchaserName' in body) payload.purchaserName = body.purchaserName?.trim() ?? null
+  if ('subregistrarRegistrationDate' in body)
+    payload.subregistrarRegistrationDate = body.subregistrarRegistrationDate?.trim()
+      ? body.subregistrarRegistrationDate.trim().slice(0, 10)
+      : null
   if ('negotiatedFinalPrice' in body) payload.negotiatedFinalPrice = body.negotiatedFinalPrice ?? null
   if ('agentCommissionPercent' in body) payload.agentCommissionPercent = body.agentCommissionPercent ?? null
   if ('agentCommissionAmount' in body) payload.agentCommissionAmount = body.agentCommissionAmount ?? null
@@ -596,6 +611,15 @@ export async function createCombinedPlotSaleGroup(input: {
   projectId: string
   displayName?: string
   plotIds: string[]
+  purchaserName?: string | null
+  subregistrarRegistrationDate?: string | null
+  negotiatedFinalPrice?: number | null
+  agentCommissionPercent?: number | null
+  agentCommissionAmount?: number | null
+  stampDutyPrice?: number | null
+  agreementPrice?: number | null
+  currency?: string
+  paymentsLocked?: boolean
 }): Promise<CombinedPlotSaleGroup> {
   const raw = await apiRequest<Record<string, unknown>>(
     `/api/v1/projects/${encodeURIComponent(input.projectId)}/plot-sale-groups`,
@@ -604,6 +628,20 @@ export async function createCombinedPlotSaleGroup(input: {
       body: JSON.stringify({
         displayName: input.displayName?.trim() ?? '',
         plotIds: input.plotIds,
+        purchaserName: input.purchaserName !== undefined ? input.purchaserName?.trim() ?? null : undefined,
+        subregistrarRegistrationDate:
+          input.subregistrarRegistrationDate !== undefined
+            ? input.subregistrarRegistrationDate?.trim()
+              ? input.subregistrarRegistrationDate.trim().slice(0, 10)
+              : null
+            : undefined,
+        negotiatedFinalPrice: input.negotiatedFinalPrice,
+        agentCommissionPercent: input.agentCommissionPercent,
+        agentCommissionAmount: input.agentCommissionAmount,
+        stampDutyPrice: input.stampDutyPrice,
+        agreementPrice: input.agreementPrice,
+        currency: input.currency?.trim() || undefined,
+        paymentsLocked: input.paymentsLocked,
       }),
     },
   )
@@ -623,11 +661,35 @@ export async function getCombinedPlotSaleGroup(
 export async function updateCombinedPlotSaleGroup(
   groupId: string,
   projectId: string,
-  patch: { displayName?: string; plotIds?: string[] },
+  patch: {
+    displayName?: string
+    plotIds?: string[]
+    purchaserName?: string | null
+    subregistrarRegistrationDate?: string | null
+    negotiatedFinalPrice?: number | null
+    agentCommissionPercent?: number | null
+    agentCommissionAmount?: number | null
+    stampDutyPrice?: number | null
+    agreementPrice?: number | null
+    currency?: string
+    paymentsLocked?: boolean
+  },
 ): Promise<CombinedPlotSaleGroup> {
   const body: Record<string, unknown> = {}
   if (patch.displayName !== undefined) body.displayName = patch.displayName.trim()
   if (patch.plotIds !== undefined) body.plotIds = patch.plotIds
+  if (patch.purchaserName !== undefined) body.purchaserName = patch.purchaserName?.trim() ?? null
+  if (patch.subregistrarRegistrationDate !== undefined)
+    body.subregistrarRegistrationDate = patch.subregistrarRegistrationDate?.trim()
+      ? patch.subregistrarRegistrationDate.trim().slice(0, 10)
+      : null
+  if (patch.negotiatedFinalPrice !== undefined) body.negotiatedFinalPrice = patch.negotiatedFinalPrice
+  if (patch.agentCommissionPercent !== undefined) body.agentCommissionPercent = patch.agentCommissionPercent
+  if (patch.agentCommissionAmount !== undefined) body.agentCommissionAmount = patch.agentCommissionAmount
+  if (patch.stampDutyPrice !== undefined) body.stampDutyPrice = patch.stampDutyPrice
+  if (patch.agreementPrice !== undefined) body.agreementPrice = patch.agreementPrice
+  if (patch.currency !== undefined) body.currency = patch.currency?.trim() || 'INR'
+  if (patch.paymentsLocked !== undefined) body.paymentsLocked = Boolean(patch.paymentsLocked)
   const raw = await apiRequest<Record<string, unknown>>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/plot-sale-groups/${encodeURIComponent(groupId)}`,
     { method: 'PATCH', body: JSON.stringify(body) },

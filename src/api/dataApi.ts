@@ -188,6 +188,7 @@ export async function upsertPlotSale(
   projectId: string,
   body: {
     purchaserName?: string | null
+    subregistrarRegistrationDate?: string | null
     negotiatedFinalPrice?: number | null
     agentCommissionPercent?: number | null
     agentCommissionAmount?: number | null
@@ -307,6 +308,15 @@ export async function createCombinedPlotSaleGroup(input: {
   projectId: string
   displayName?: string
   plotIds: string[]
+  purchaserName?: string | null
+  subregistrarRegistrationDate?: string | null
+  negotiatedFinalPrice?: number | null
+  agentCommissionPercent?: number | null
+  agentCommissionAmount?: number | null
+  stampDutyPrice?: number | null
+  agreementPrice?: number | null
+  currency?: string
+  paymentsLocked?: boolean
 }): Promise<CombinedPlotSaleGroup> {
   if (isBackendAuthEnabled()) return backend.createCombinedPlotSaleGroup(input)
   return mock.createCombinedPlotSaleGroup(input)
@@ -323,7 +333,19 @@ export async function getCombinedPlotSaleGroup(
 export async function updateCombinedPlotSaleGroup(
   groupId: string,
   projectId: string,
-  patch: { displayName?: string; plotIds?: string[] },
+  patch: {
+    displayName?: string
+    plotIds?: string[]
+    purchaserName?: string | null
+    subregistrarRegistrationDate?: string | null
+    negotiatedFinalPrice?: number | null
+    agentCommissionPercent?: number | null
+    agentCommissionAmount?: number | null
+    stampDutyPrice?: number | null
+    agreementPrice?: number | null
+    currency?: string
+    paymentsLocked?: boolean
+  },
 ): Promise<CombinedPlotSaleGroup> {
   if (isBackendAuthEnabled()) {
     return backend.updateCombinedPlotSaleGroup(groupId, projectId, patch)

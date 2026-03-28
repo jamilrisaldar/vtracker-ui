@@ -97,6 +97,8 @@ export interface PlotSale {
   id: string
   plotId: string
   purchaserName?: string
+  /** ISO date YYYY-MM-DD */
+  subregistrarRegistrationDate?: string
   negotiatedFinalPrice?: number
   agentCommissionPercent?: number
   agentCommissionAmount?: number
@@ -120,6 +122,7 @@ export interface CombinedPlotSaleGroup {
   displayName: string
   plotIds: string[]
   purchaserName?: string
+  subregistrarRegistrationDate?: string
   negotiatedFinalPrice?: number
   agentCommissionPercent?: number
   agentCommissionAmount?: number

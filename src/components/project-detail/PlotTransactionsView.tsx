@@ -2,9 +2,42 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as api from '../../api/dataApi'
 import type { Account, LandPlot, PlotSale, PlotSaleAgentPayment, PlotSalePayment } from '../../types'
 import { MoneyInrShorthand } from '../MoneyInrShorthand'
-import { PencilIcon, TrashIcon, iconBtnClass } from '../accounts/ledgerIcons'
+import { CopyIcon, PencilIcon, TrashIcon, iconBtnClass } from '../accounts/ledgerIcons'
 import { PlotPaymentSheet } from './PlotPaymentSheet'
 import { PlotSaleDetailsSheet } from './PlotSaleDetailsSheet'
+
+/** Row tint + left accent by payment mode (buyer lines table). */
+function buyerPaymentRowClass(mode: string | undefined): string {
+  const m = (mode?.trim().toLowerCase() ?? '').replace(/\s+/g, ' ')
+  const base = 'border-t border-slate-100 transition-colors'
+  if (!m) {
+    return `${base} border-l-[3px] border-l-slate-300 bg-slate-50/50`
+  }
+  const rules: [RegExp, string][] = [
+    [/\brtgs\b/, 'border-l-sky-500 bg-sky-50/90'],
+    [/\bneft\b/, 'border-l-blue-500 bg-blue-50/90'],
+    [/\bimps\b/, 'border-l-indigo-500 bg-indigo-50/90'],
+    [/\bupi\b/, 'border-l-violet-500 bg-violet-50/90'],
+    [/\b(cheque|check|chq)\b/, 'border-l-amber-500 bg-amber-50/90'],
+    [/\b(dd|demand\s*draft)\b/, 'border-l-orange-500 bg-orange-50/90'],
+    [/\bcash\b/, 'border-l-emerald-500 bg-emerald-50/90'],
+    [/\b(card|pos|debit|credit)\b/, 'border-l-teal-500 bg-teal-50/90'],
+    [/\b(online|net\s*banking|internet\s*banking)\b/, 'border-l-cyan-500 bg-cyan-50/90'],
+    [/\b(wire|bank\s*transfer)\b/, 'border-l-sky-600 bg-sky-50/80'],
+  ]
+  for (const [re, tone] of rules) {
+    if (re.test(m)) return `${base} border-l-[3px] ${tone}`
+  }
+  const fallback = [
+    'border-l-fuchsia-500 bg-fuchsia-50/85',
+    'border-l-rose-500 bg-rose-50/85',
+    'border-l-lime-600 bg-lime-50/85',
+    'border-l-pink-500 bg-pink-50/85',
+  ]
+  let h = 0
+  for (let i = 0; i < m.length; i++) h = (h * 31 + m.charCodeAt(i)) >>> 0
+  return `${base} border-l-[3px] ${fallback[h % fallback.length]}`
+}
 
 export function PlotTransactionsView({
   projectId,
@@ -43,6 +76,7 @@ export function PlotTransactionsView({
   const [sheetInitialNotes, setSheetInitialNotes] = useState('')
   const [sheetInitialAccountId, setSheetInitialAccountId] = useState('')
   const [savingPayment, setSavingPayment] = useState(false)
+  const [paymentSheetFromDuplicate, setPaymentSheetFromDuplicate] = useState(false)
   const [accounts, setAccounts] = useState<Account[]>([])
 
   const [agentSheetOpen, setAgentSheetOpen] = useState(false)
@@ -96,6 +130,7 @@ export function PlotTransactionsView({
     if (sale?.paymentsLocked === true && paymentSheetOpen) {
       setPaymentSheetOpen(false)
       setEditingPaymentId(null)
+      setPaymentSheetFromDuplicate(false)
     }
   }, [sale?.paymentsLocked, paymentSheetOpen])
 
@@ -147,6 +182,7 @@ export function PlotTransactionsView({
 
   const openAddPayment = () => {
     onError(null)
+    setPaymentSheetFromDuplicate(false)
     setPaymentSheetMode('add')
     setEditingPaymentId(null)
     setSheetInitialAmount('')
@@ -157,8 +193,23 @@ export function PlotTransactionsView({
     setPaymentSheetOpen(true)
   }
 
+  const openCopyPayment = (p: PlotSalePayment) => {
+    if (paymentsReadOnly) return
+    onError(null)
+    setPaymentSheetFromDuplicate(true)
+    setPaymentSheetMode('add')
+    setEditingPaymentId(null)
+    setSheetInitialAmount(p.amount != null ? String(p.amount) : '')
+    setSheetInitialMode(p.paymentMode ?? '')
+    setSheetInitialDate(p.paidDate?.trim().slice(0, 10) ?? '')
+    setSheetInitialNotes(p.notes ?? '')
+    setSheetInitialAccountId(p.accountId ?? '')
+    setPaymentSheetOpen(true)
+  }
+
   const openEditPayment = (p: PlotSalePayment) => {
     onError(null)
+    setPaymentSheetFromDuplicate(false)
     setPaymentSheetMode('edit')
     setEditingPaymentId(p.id)
     setSheetInitialAmount(p.amount != null ? String(p.amount) : '')
@@ -172,6 +223,7 @@ export function PlotTransactionsView({
   const closePaymentSheet = () => {
     setPaymentSheetOpen(false)
     setEditingPaymentId(null)
+    setPaymentSheetFromDuplicate(false)
   }
 
   const submitPaymentSheet = async (data: {
@@ -307,6 +359,7 @@ export function PlotTransactionsView({
   }
 
   const buyerColCount = paymentsReadOnly ? 5 : 7
+  const agentColCount = paymentsReadOnly ? 4 : 6
 
   return (
     <div className="relative min-h-[min(70vh,28rem)]">
@@ -353,9 +406,22 @@ export function PlotTransactionsView({
             <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950">
               <p className="font-semibold">Combined sale</p>
               <p className="mt-1 text-violet-900/90">
-                Payments below are shared across this deal ({sale.combinedPlotIds?.length ?? 0}{' '}
-                plots).
+                Purchaser and sale amounts below apply to all {sale.combinedPlotIds?.length ?? 0} plots
+                in this deal; payment lines are shared. Use <strong>Edit purchaser &amp; sale…</strong>{' '}
+                to change terms or the plot list.
               </p>
+              {sale.purchaserName?.trim() ? (
+                <p className="mt-2 text-violet-950">
+                  <span className="font-medium text-violet-800">Purchaser:</span>{' '}
+                  {sale.purchaserName.trim()}
+                </p>
+              ) : null}
+              {sale.subregistrarRegistrationDate?.trim() ? (
+                <p className="mt-1 text-sm text-violet-950">
+                  <span className="font-medium text-violet-800">Subregistrar registration:</span>{' '}
+                  {sale.subregistrarRegistrationDate.trim().slice(0, 10)}
+                </p>
+              ) : null}
               {sale.combinedDisplayName?.trim() ? (
                 <p className="mt-1 text-xs text-violet-800">Label: {sale.combinedDisplayName.trim()}</p>
               ) : null}
@@ -378,6 +444,12 @@ export function PlotTransactionsView({
               <div>
                 <dt className="text-slate-500">Purchaser</dt>
                 <dd className="mt-0.5 font-medium text-slate-900">{sale?.purchaserName?.trim() || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Subregistrar registration date</dt>
+                <dd className="mt-0.5 font-medium text-slate-900">
+                  {sale?.subregistrarRegistrationDate?.trim().slice(0, 10) || '—'}
+                </dd>
               </div>
               <div>
                 <dt className="text-slate-500">Negotiated final</dt>
@@ -492,8 +564,8 @@ export function PlotTransactionsView({
                 <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                   <tr>
                     {!paymentsReadOnly ? (
-                      <th className="w-12 px-2 py-2 text-center" scope="col">
-                        <span className="sr-only">Edit</span>
+                      <th className="min-w-[5.5rem] px-2 py-2 text-center" scope="col">
+                        <span className="sr-only">Edit or duplicate payment</span>
                       </th>
                     ) : null}
                     <th className="px-3 py-2 text-right tabular-nums">Amount</th>
@@ -517,23 +589,35 @@ export function PlotTransactionsView({
                     </tr>
                   ) : (
                     payments.map((p) => (
-                      <tr key={p.id} className="border-t border-slate-100">
+                      <tr key={p.id} className={buyerPaymentRowClass(p.paymentMode)}>
                         {!paymentsReadOnly ? (
-                          <td className="px-2 py-2 text-center align-middle">
-                            <button
-                              type="button"
-                              className={iconBtnClass('neutral')}
-                              aria-label="Edit payment"
-                              onClick={() => openEditPayment(p)}
-                            >
-                              <PencilIcon className="h-4 w-4" />
-                            </button>
+                          <td className="px-2 py-2 align-middle">
+                            <div className="flex items-center justify-center gap-0.5">
+                              <button
+                                type="button"
+                                className={iconBtnClass('neutral')}
+                                aria-label="Edit payment"
+                                onClick={() => openEditPayment(p)}
+                              >
+                                <PencilIcon className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                className={iconBtnClass('neutral')}
+                                aria-label="Duplicate as new payment"
+                                onClick={() => openCopyPayment(p)}
+                              >
+                                <CopyIcon className="h-4 w-4" />
+                              </button>
+                            </div>
                           </td>
                         ) : null}
                         <td className="px-3 py-2 text-right font-medium tabular-nums">
                           <MoneyInrShorthand amount={p.amount ?? null} currency={currency} />
                         </td>
-                        <td className="px-3 py-2">{p.paymentMode?.trim() || '—'}</td>
+                        <td className="px-3 py-2 font-medium text-slate-800">
+                          {p.paymentMode?.trim() || '—'}
+                        </td>
                         <td className="max-w-[14rem] truncate px-3 py-2 text-slate-700" title={p.accountId ? accountNameById.get(p.accountId) : undefined}>
                           {p.accountId ? (accountNameById.get(p.accountId) ?? '—') : '—'}
                         </td>
@@ -598,7 +682,7 @@ export function PlotTransactionsView({
                 <tbody>
                   {agentPayments.length === 0 ? (
                     <tr>
-                      <td colSpan={buyerColCount} className="px-3 py-6 text-center text-slate-500">
+                      <td colSpan={agentColCount} className="px-3 py-6 text-center text-slate-500">
                         No agent payments recorded.
                       </td>
                     </tr>
@@ -648,7 +732,13 @@ export function PlotTransactionsView({
       <PlotPaymentSheet
         open={paymentSheetOpen}
         onClose={closePaymentSheet}
-        title={paymentSheetMode === 'add' ? 'Add buyer payment' : 'Edit buyer payment'}
+        title={
+          paymentSheetMode === 'add'
+            ? paymentSheetFromDuplicate
+              ? 'Duplicate buyer payment'
+              : 'Add buyer payment'
+            : 'Edit buyer payment'
+        }
         submitLabel={paymentSheetMode === 'add' ? 'Add payment' : 'Save changes'}
         saving={savingPayment}
         initialAmount={sheetInitialAmount}

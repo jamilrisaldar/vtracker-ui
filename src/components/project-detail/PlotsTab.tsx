@@ -390,7 +390,7 @@ export function PlotsTab({
 
       {combinePanel ? (
         <div className="fixed inset-0 z-[56] bg-slate-900/40">
-          <div className="absolute inset-y-0 right-0 w-full max-w-md">
+          <div className="absolute inset-y-0 right-0 w-full max-w-xl">
             <CombinePlotsSalePanel
               projectId={projectId}
               plots={plots}

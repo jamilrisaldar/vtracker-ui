@@ -49,6 +49,7 @@ export function PlotSaleDetailsSheet({
   readOnly?: boolean
 }) {
   const [purchaserName, setPurchaserName] = useState('')
+  const [subregistrarRegistrationDate, setSubregistrarRegistrationDate] = useState('')
   const [negotiatedFinalPrice, setNegotiatedFinalPrice] = useState('')
   const [agentCommissionPercent, setAgentCommissionPercent] = useState('')
   const [agentCommissionAmount, setAgentCommissionAmount] = useState('')
@@ -70,6 +71,9 @@ export function PlotSaleDetailsSheet({
     lastCommissionSource.current = null
     if (sale) {
       setPurchaserName(sale.purchaserName ?? '')
+      setSubregistrarRegistrationDate(
+        sale.subregistrarRegistrationDate?.trim().slice(0, 10) ?? '',
+      )
       setNegotiatedFinalPrice(
         sale.negotiatedFinalPrice != null ? String(sale.negotiatedFinalPrice) : '',
       )
@@ -93,6 +97,7 @@ export function PlotSaleDetailsSheet({
       setPaymentsLocked(sale.paymentsLocked === true)
     } else {
       setPurchaserName('')
+      setSubregistrarRegistrationDate('')
       setNegotiatedFinalPrice('')
       setAgentCommissionPercent('')
       setAgentCommissionAmount('')
@@ -148,6 +153,9 @@ export function PlotSaleDetailsSheet({
     try {
       const row = await api.upsertPlotSale(plot.id, projectId, {
         purchaserName: purchaserName.trim() || null,
+        subregistrarRegistrationDate: subregistrarRegistrationDate.trim()
+          ? subregistrarRegistrationDate.trim().slice(0, 10)
+          : null,
         negotiatedFinalPrice: numOrUndef(negotiatedFinalPrice) ?? null,
         agentCommissionPercent: numOrUndef(agentCommissionPercent) ?? null,
         agentCommissionAmount: numOrUndef(agentCommissionAmount) ?? null,
@@ -214,7 +222,9 @@ export function PlotSaleDetailsSheet({
               Purchaser &amp; sale terms
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              Plot {plot.plotNumber?.trim() ? `#${plot.plotNumber.trim()}` : plot.id.slice(0, 8)}
+              {sale?.combinedGroupId
+                ? `Shared sale — opened from plot ${plot.plotNumber?.trim() ? `#${plot.plotNumber.trim()}` : plot.id.slice(0, 8)}`
+                : `Plot ${plot.plotNumber?.trim() ? `#${plot.plotNumber.trim()}` : plot.id.slice(0, 8)}`}
             </p>
           </div>
           <button
@@ -255,7 +265,21 @@ export function PlotSaleDetailsSheet({
           ) : null}
 
           {readOnly ? (
-            <p className="text-xs text-amber-800/90">View-only: sale details cannot be edited.</p>
+            <div className="space-y-3">
+              <dl className="space-y-2 text-sm">
+                <div>
+                  <dt className={labelCls}>Purchaser name</dt>
+                  <dd className="mt-0.5 text-slate-900">{sale?.purchaserName?.trim() || '—'}</dd>
+                </div>
+                <div>
+                  <dt className={labelCls}>Subregistrar registration date</dt>
+                  <dd className="mt-0.5 text-slate-900">
+                    {sale?.subregistrarRegistrationDate?.trim().slice(0, 10) || '—'}
+                  </dd>
+                </div>
+              </dl>
+              <p className="text-xs text-amber-800/90">View-only: sale details cannot be edited.</p>
+            </div>
           ) : (
             <>
               <label className="block">
@@ -265,6 +289,15 @@ export function PlotSaleDetailsSheet({
                   value={purchaserName}
                   onChange={(e) => setPurchaserName(e.target.value)}
                   placeholder="Buyer name"
+                />
+              </label>
+              <label className="block">
+                <span className={labelCls}>Subregistrar registration date</span>
+                <input
+                  className={inputCls}
+                  type="date"
+                  value={subregistrarRegistrationDate}
+                  onChange={(e) => setSubregistrarRegistrationDate(e.target.value)}
                 />
               </label>
 
