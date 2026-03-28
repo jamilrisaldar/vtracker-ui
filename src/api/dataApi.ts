@@ -10,6 +10,7 @@ import type {
   DocumentKind,
   Invoice,
   InvoiceStatus,
+  InvoiceUpdatePatch,
   LandPlot,
   Payment,
   Phase,
@@ -442,17 +443,7 @@ export async function createInvoice(input: {
 
 export async function updateInvoice(
   invoiceId: string,
-  patch: Partial<
-    Pick<
-      Invoice,
-      | 'invoiceNumber'
-      | 'amount'
-      | 'currency'
-      | 'issuedDate'
-      | 'dueDate'
-      | 'status'
-    >
-  >,
+  patch: InvoiceUpdatePatch,
   projectId?: string,
 ): Promise<Invoice> {
   if (isBackendAuthEnabled()) {
@@ -497,6 +488,25 @@ export async function createPayment(input: {
 }): Promise<Payment> {
   if (isBackendAuthEnabled()) return backend.createPayment(input)
   return mock.createPayment(input)
+}
+
+export async function updatePayment(
+  paymentId: string,
+  projectId: string,
+  patch: Partial<{
+    invoiceId: string
+    amount: number
+    paidDate: string
+    method: string | null
+    reference: string | null
+    paymentMethod: 'Cash' | 'Cheque' | 'RTGS' | 'Other'
+    isPaymentPartial: boolean
+    paymentSource: string | null
+    comments: string | null
+  }>,
+): Promise<Payment> {
+  if (isBackendAuthEnabled()) return backend.updatePayment(paymentId, projectId, patch)
+  return mock.updatePayment(paymentId, projectId, patch)
 }
 
 export async function deletePayment(

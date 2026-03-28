@@ -11,6 +11,7 @@ import type {
   DocumentKind,
   Invoice,
   InvoiceStatus,
+  InvoiceUpdatePatch,
   CombinedPlotSaleGroup,
   LandPlot,
   PlotSale,
@@ -815,20 +816,11 @@ export async function createInvoice(input: {
 
 export async function updateInvoice(
   invoiceId: string,
-  patch: Partial<
-    Pick<
-      Invoice,
-      | 'invoiceNumber'
-      | 'amount'
-      | 'currency'
-      | 'issuedDate'
-      | 'dueDate'
-      | 'status'
-    >
-  >,
+  patch: InvoiceUpdatePatch,
   projectId: string,
 ): Promise<Invoice> {
   const body: Record<string, unknown> = {}
+  if (patch.vendorId != null) body.vendorId = patch.vendorId
   if (patch.invoiceNumber != null) body.invoiceNumber = patch.invoiceNumber.trim()
   if (patch.amount != null) body.amount = patch.amount
   if (patch.currency != null) body.currency = patch.currency
@@ -890,6 +882,37 @@ export async function createPayment(input: {
         comments: input.comments?.trim(),
       }),
     },
+  )
+}
+
+export async function updatePayment(
+  paymentId: string,
+  projectId: string,
+  patch: Partial<{
+    invoiceId: string
+    amount: number
+    paidDate: string
+    method: string | null
+    reference: string | null
+    paymentMethod: 'Cash' | 'Cheque' | 'RTGS' | 'Other'
+    isPaymentPartial: boolean
+    paymentSource: string | null
+    comments: string | null
+  }>,
+): Promise<Payment> {
+  const body: Record<string, unknown> = {}
+  if (patch.invoiceId != null) body.invoiceId = patch.invoiceId
+  if (patch.amount != null) body.amount = patch.amount
+  if (patch.paidDate != null) body.paidDate = patch.paidDate
+  if (patch.method !== undefined) body.method = patch.method
+  if (patch.reference !== undefined) body.reference = patch.reference
+  if (patch.paymentMethod != null) body.paymentMethod = patch.paymentMethod
+  if (patch.isPaymentPartial !== undefined) body.isPaymentPartial = patch.isPaymentPartial
+  if (patch.paymentSource !== undefined) body.paymentSource = patch.paymentSource
+  if (patch.comments !== undefined) body.comments = patch.comments
+  return apiRequest<Payment>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/payments/${encodeURIComponent(paymentId)}`,
+    { method: 'PATCH', body: JSON.stringify(body) },
   )
 }
 

@@ -206,6 +206,11 @@ export interface Invoice {
   status: InvoiceStatus
 }
 
+/** PATCH body: `dueDate: null` clears the due date on the server. */
+export type InvoiceUpdatePatch = Partial<
+  Pick<Invoice, 'vendorId' | 'invoiceNumber' | 'amount' | 'currency' | 'issuedDate' | 'status'>
+> & { dueDate?: string | null }
+
 export interface Payment {
   id: string
   invoiceId: string

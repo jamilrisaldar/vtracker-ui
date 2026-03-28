@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import * as api from '../api/dataApi'
-import type { Invoice } from '../types'
+import type { Invoice, Payment } from '../types'
 import { formatMoney } from '../utils/format'
 
 const paymentMethodOptions = ['Cash', 'Cheque', 'RTGS', 'Other'] as const
@@ -9,6 +9,7 @@ export function PaymentRecordPanel({
   projectId,
   invoices,
   vendorName,
+  initialPayment = null,
   onClose,
   onRefresh,
   onError,
@@ -17,11 +18,13 @@ export function PaymentRecordPanel({
   projectId: string
   invoices: Invoice[]
   vendorName: Map<string, string>
+  initialPayment?: Payment | null
   onClose: () => void
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
   className?: string
 }) {
+  const editing = initialPayment != null
   const [invoiceId, setInvoiceId] = useState('')
   const [amount, setAmount] = useState('')
   const [paidDate, setPaidDate] = useState('')
@@ -32,6 +35,30 @@ export function PaymentRecordPanel({
   const [comments, setComments] = useState('')
   const [saving, setSaving] = useState(false)
 
+  useEffect(() => {
+    if (initialPayment) {
+      setInvoiceId(initialPayment.invoiceId)
+      setAmount(String(initialPayment.amount))
+      setPaidDate(initialPayment.paidDate.slice(0, 10))
+      setPaymentMethod(
+        (initialPayment.paymentMethod as (typeof paymentMethodOptions)[number] | undefined) ?? 'Other',
+      )
+      setIsPaymentPartial(initialPayment.isPaymentPartial === true)
+      setPaymentSource(initialPayment.paymentSource ?? '')
+      setReference(initialPayment.reference ?? '')
+      setComments(initialPayment.comments ?? '')
+    } else {
+      setInvoiceId('')
+      setAmount('')
+      setPaidDate('')
+      setPaymentMethod('Other')
+      setIsPaymentPartial(false)
+      setPaymentSource('')
+      setReference('')
+      setComments('')
+    }
+  }, [initialPayment])
+
   return (
     <div
       className={[
@@ -41,7 +68,9 @@ export function PaymentRecordPanel({
         .filter(Boolean)
         .join(' ')}
     >
-      <h2 className="text-lg font-medium text-slate-900">Record payment</h2>
+      <h2 className="text-lg font-medium text-slate-900">
+        {editing ? 'Edit payment' : 'Record payment'}
+      </h2>
 
       <form
         className="mt-4 grid gap-4 sm:grid-cols-2"
@@ -51,21 +80,34 @@ export function PaymentRecordPanel({
           onError(null)
           setSaving(true)
           try {
-            await api.createPayment({
-              projectId,
-              invoiceId,
-              amount: Number(amount),
-              paidDate,
-              paymentMethod,
-              isPaymentPartial,
-              paymentSource: paymentSource || undefined,
-              reference: reference || undefined,
-              comments: comments || undefined,
-            })
+            if (editing && initialPayment) {
+              await api.updatePayment(initialPayment.id, projectId, {
+                invoiceId,
+                amount: Number(amount),
+                paidDate,
+                paymentMethod,
+                isPaymentPartial,
+                paymentSource: paymentSource.trim() || null,
+                reference: reference.trim() || null,
+                comments: comments.trim() || null,
+              })
+            } else {
+              await api.createPayment({
+                projectId,
+                invoiceId,
+                amount: Number(amount),
+                paidDate,
+                paymentMethod,
+                isPaymentPartial,
+                paymentSource: paymentSource || undefined,
+                reference: reference || undefined,
+                comments: comments || undefined,
+              })
+            }
             await onRefresh()
             onClose()
           } catch (err) {
-            onError(err instanceof Error ? err.message : 'Could not add payment.')
+            onError(err instanceof Error ? err.message : 'Could not save payment.')
           } finally {
             setSaving(false)
           }
@@ -174,7 +216,7 @@ export function PaymentRecordPanel({
             disabled={saving}
             className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
           >
-            {saving ? 'Saving…' : 'Add payment'}
+            {saving ? 'Saving…' : editing ? 'Save changes' : 'Add payment'}
           </button>
           <button
             type="button"
@@ -189,4 +231,3 @@ export function PaymentRecordPanel({
     </div>
   )
 }
-

@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import * as api from '../api/dataApi'
-import type { Vendor } from '../types'
+import type { Invoice, InvoiceStatus, Vendor } from '../types'
+
+const statusOptions: InvoiceStatus[] = ['draft', 'sent', 'paid', 'partial', 'overdue']
 
 export function InvoiceRecordPanel({
   projectId,
   vendors,
+  initialInvoice = null,
   onClose,
   onRefresh,
   onError,
@@ -12,17 +15,38 @@ export function InvoiceRecordPanel({
 }: {
   projectId: string
   vendors: Vendor[]
+  initialInvoice?: Invoice | null
   onClose: () => void
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
   className?: string
 }) {
+  const editing = initialInvoice != null
   const [vendorId, setVendorId] = useState('')
   const [invoiceNo, setInvoiceNo] = useState('')
   const [amount, setAmount] = useState('')
   const [issuedDate, setIssuedDate] = useState('')
   const [dueDate, setDueDate] = useState('')
+  const [status, setStatus] = useState<InvoiceStatus>('sent')
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (initialInvoice) {
+      setVendorId(initialInvoice.vendorId)
+      setInvoiceNo(initialInvoice.invoiceNumber)
+      setAmount(String(initialInvoice.amount))
+      setIssuedDate(initialInvoice.issuedDate.slice(0, 10))
+      setDueDate(initialInvoice.dueDate?.slice(0, 10) ?? '')
+      setStatus(initialInvoice.status)
+    } else {
+      setVendorId('')
+      setInvoiceNo('')
+      setAmount('')
+      setIssuedDate('')
+      setDueDate('')
+      setStatus('sent')
+    }
+  }, [initialInvoice])
 
   return (
     <div
@@ -33,7 +57,9 @@ export function InvoiceRecordPanel({
         .filter(Boolean)
         .join(' ')}
     >
-      <h2 className="text-lg font-medium text-slate-900">Record invoice</h2>
+      <h2 className="text-lg font-medium text-slate-900">
+        {editing ? 'Edit invoice' : 'Record invoice'}
+      </h2>
       <form
         className="mt-4 grid gap-4 sm:grid-cols-2"
         onSubmit={async (e) => {
@@ -42,18 +68,33 @@ export function InvoiceRecordPanel({
           onError(null)
           setSaving(true)
           try {
-            await api.createInvoice({
-              projectId,
-              vendorId,
-              invoiceNumber: invoiceNo,
-              amount: Number(amount),
-              issuedDate,
-              dueDate: dueDate || undefined,
-            })
+            if (editing && initialInvoice) {
+              await api.updateInvoice(
+                initialInvoice.id,
+                {
+                  vendorId,
+                  invoiceNumber: invoiceNo.trim(),
+                  amount: Number(amount),
+                  issuedDate,
+                  dueDate: dueDate.trim() ? dueDate : null,
+                  status,
+                },
+                projectId,
+              )
+            } else {
+              await api.createInvoice({
+                projectId,
+                vendorId,
+                invoiceNumber: invoiceNo,
+                amount: Number(amount),
+                issuedDate,
+                dueDate: dueDate || undefined,
+              })
+            }
             await onRefresh()
             onClose()
           } catch (err) {
-            onError(err instanceof Error ? err.message : 'Could not add invoice.')
+            onError(err instanceof Error ? err.message : 'Could not save invoice.')
           } finally {
             setSaving(false)
           }
@@ -115,6 +156,22 @@ export function InvoiceRecordPanel({
             onChange={(e) => setDueDate(e.target.value)}
           />
         </label>
+        {editing ? (
+          <label className="block sm:col-span-2">
+            <span className="text-xs font-medium text-slate-600">Status</span>
+            <select
+              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as InvoiceStatus)}
+            >
+              {statusOptions.map((s) => (
+                <option key={s} value={s}>
+                  {s.replace('_', ' ')}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <div className="sm:col-span-2 mt-1 flex gap-2">
           <button
@@ -122,7 +179,7 @@ export function InvoiceRecordPanel({
             disabled={saving}
             className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
           >
-            {saving ? 'Saving…' : 'Add invoice'}
+            {saving ? 'Saving…' : editing ? 'Save changes' : 'Add invoice'}
           </button>
           <button
             type="button"
@@ -137,4 +194,3 @@ export function InvoiceRecordPanel({
     </div>
   )
 }
-

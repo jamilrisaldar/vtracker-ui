@@ -8,6 +8,7 @@ import type {
   DocumentKind,
   Invoice,
   InvoiceStatus,
+  InvoiceUpdatePatch,
   CombinedPlotSaleGroup,
   LandPlot,
   PlotSale,
@@ -1518,17 +1519,7 @@ export async function createInvoice(input: {
 
 export async function updateInvoice(
   invoiceId: string,
-  patch: Partial<
-    Pick<
-      Invoice,
-      | 'invoiceNumber'
-      | 'amount'
-      | 'currency'
-      | 'issuedDate'
-      | 'dueDate'
-      | 'status'
-    >
-  >,
+  patch: InvoiceUpdatePatch,
   _projectId?: string,
 ): Promise<Invoice> {
   await delay()
@@ -1539,11 +1530,21 @@ export async function updateInvoice(
   if (_projectId && inv.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === inv.projectId)
   if (!proj) throw new Error('Not found')
+  if (patch.vendorId != null) {
+    const v = db.vendors.find((x) => x.id === patch.vendorId && x.projectId === inv.projectId)
+    if (!v) throw new Error('Vendor not found')
+    inv.vendorId = patch.vendorId
+    for (const p of db.payments) {
+      if (p.invoiceId === inv.id) p.vendorId = patch.vendorId
+    }
+  }
   if (patch.invoiceNumber != null) inv.invoiceNumber = patch.invoiceNumber.trim()
   if (patch.amount != null) inv.amount = patch.amount
   if (patch.currency != null) inv.currency = patch.currency
   if (patch.issuedDate != null) inv.issuedDate = patch.issuedDate
-  if (patch.dueDate !== undefined) inv.dueDate = patch.dueDate
+  if (patch.dueDate !== undefined) {
+    inv.dueDate = patch.dueDate === null ? undefined : patch.dueDate
+  }
   if (patch.status != null) inv.status = patch.status
   proj.updatedAt = nowIso()
   saveDb(db)
@@ -1623,6 +1624,68 @@ export async function createPayment(input: {
   if (paidTotal >= inv.amount) inv.status = 'paid'
   else if (paidTotal > 0) inv.status = 'partial'
   project.updatedAt = nowIso()
+  saveDb(db)
+  return pay
+}
+
+function mockRecomputeInvoicePaymentStatus(db: MockDatabase, invoiceId: string) {
+  const inv = db.invoices.find((i) => i.id === invoiceId)
+  if (!inv) return
+  const paidTotal = db.payments
+    .filter((p) => p.invoiceId === inv.id)
+    .reduce((s, p) => s + p.amount, 0)
+  if (paidTotal <= 0) inv.status = inv.status === 'draft' ? 'draft' : 'sent'
+  else if (paidTotal >= inv.amount) inv.status = 'paid'
+  else inv.status = 'partial'
+}
+
+export async function updatePayment(
+  paymentId: string,
+  _projectId: string,
+  patch: Partial<{
+    invoiceId: string
+    amount: number
+    paidDate: string
+    method: string | null
+    reference: string | null
+    paymentMethod: 'Cash' | 'Cheque' | 'RTGS' | 'Other'
+    isPaymentPartial: boolean
+    paymentSource: string | null
+    comments: string | null
+  }>,
+): Promise<Payment> {
+  await delay()
+  getUserIdOrThrow()
+  const db = loadDb()
+  const pay = db.payments.find((x) => x.id === paymentId)
+  if (!pay) throw new Error('Not found')
+  if (_projectId && pay.projectId !== _projectId) throw new Error('Not found')
+  const proj = db.projects.find((p) => p.id === pay.projectId)
+  if (!proj) throw new Error('Not found')
+
+  const oldInvoiceId = pay.invoiceId
+  let invoicesToRecompute = new Set<string>([oldInvoiceId])
+
+  if (patch.invoiceId !== undefined) {
+    const inv = db.invoices.find((i) => i.id === patch.invoiceId && i.projectId === pay.projectId)
+    if (!inv) throw new Error('Invoice not found')
+    pay.invoiceId = patch.invoiceId
+    pay.vendorId = inv.vendorId
+    invoicesToRecompute.add(patch.invoiceId)
+  }
+  if (patch.amount !== undefined) pay.amount = patch.amount
+  if (patch.paidDate !== undefined) pay.paidDate = patch.paidDate
+  if (patch.method !== undefined) pay.method = patch.method ?? undefined
+  if (patch.reference !== undefined) pay.reference = patch.reference ?? undefined
+  if (patch.paymentMethod !== undefined) pay.paymentMethod = patch.paymentMethod
+  if (patch.isPaymentPartial !== undefined) pay.isPaymentPartial = patch.isPaymentPartial
+  if (patch.paymentSource !== undefined) pay.paymentSource = patch.paymentSource ?? undefined
+  if (patch.comments !== undefined) pay.comments = patch.comments ?? undefined
+
+  for (const iid of invoicesToRecompute) {
+    mockRecomputeInvoicePaymentStatus(db, iid)
+  }
+  proj.updatedAt = nowIso()
   saveDb(db)
   return pay
 }
