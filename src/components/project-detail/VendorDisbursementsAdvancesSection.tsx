@@ -1,35 +1,41 @@
 import { useCallback, useEffect, useState } from 'react'
 import * as api from '../../api/dataApi'
-import type { VendorAdvance } from '../../types'
+import type { Vendor, VendorAdvance } from '../../types'
 import { formatDate, formatMoney } from '../../utils/format'
+import { VendorAdvanceRecordPanel } from '../VendorAdvanceRecordPanel'
 
 const iconBtnClass =
   'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'
 
-function CopyIcon() {
+function PencilIcon() {
   return (
     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
-        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
       />
     </svg>
   )
 }
 
-async function copyJson(label: string, data: unknown) {
-  try {
-    await navigator.clipboard.writeText(JSON.stringify(data, null, 2))
-  } catch {
-    window.prompt(`Copy ${label}`, JSON.stringify(data))
-  }
+function TrashIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+      />
+    </svg>
+  )
 }
 
-/** Vendor prepayment pool (remaining balance). Contractor lump-sum batches are managed from each invoice. */
+/** Vendor prepayment pool (remaining balance). Contractor lump-sum batches are managed from each invoice or when recording payments. */
 export function VendorDisbursementsAdvancesSection({
   projectId,
   vendorId,
+  vendors,
   vendorName,
   onRefresh,
   onError,
@@ -38,6 +44,7 @@ export function VendorDisbursementsAdvancesSection({
   projectId: string
   /** When set, only this vendor’s advances are listed. */
   vendorId?: string
+  vendors: Vendor[]
   vendorName: Map<string, string>
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
@@ -45,6 +52,7 @@ export function VendorDisbursementsAdvancesSection({
 }) {
   const [advances, setAdvances] = useState<VendorAdvance[]>([])
   const [loading, setLoading] = useState(true)
+  const [panelAdvance, setPanelAdvance] = useState<VendorAdvance | 'new' | null>(null)
 
   const reload = useCallback(async () => {
     onError(null)
@@ -67,16 +75,25 @@ export function VendorDisbursementsAdvancesSection({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-slate-600">
-          Prepayments to vendors (advance pool). Usages are applied when recording invoice payments.
+          Prepayments to vendors (advance pool). Apply balances when recording invoice payments.
         </p>
         {!readOnly ? (
-          <button
-            type="button"
-            onClick={() => void reload().then(() => onRefresh())}
-            className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-800"
-          >
-            Refresh advances
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setPanelAdvance('new')}
+              className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-800"
+            >
+              Add advance
+            </button>
+            <button
+              type="button"
+              onClick={() => void reload().then(() => onRefresh())}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Refresh
+            </button>
+          </div>
         ) : null}
       </div>
       {loading ? <p className="text-sm text-slate-600">Loading…</p> : null}
@@ -85,37 +102,61 @@ export function VendorDisbursementsAdvancesSection({
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="w-11 px-2 py-3">Actions</th>
+              <th className="min-w-[5rem] px-2 py-3">Actions</th>
               <th className="px-4 py-3">Paid</th>
               {!vendorId ? <th className="px-4 py-3">Vendor</th> : null}
               <th className="px-4 py-3">Advance</th>
               <th className="px-4 py-3">Remaining</th>
+              <th className="px-4 py-3">Source</th>
             </tr>
           </thead>
           <tbody>
             {advances.length === 0 ? (
               <tr>
                 <td
-                  colSpan={vendorId ? 4 : 5}
+                  colSpan={vendorId ? 5 : 6}
                   className="px-4 py-6 text-center text-slate-500"
                 >
-                  No advances{vendorId ? ' for this vendor' : ''}. Create via API{' '}
-                  <span className="font-mono text-xs">POST …/vendor-advances</span>.
+                  No advances{vendorId ? ' for this vendor' : ''}. Use <span className="font-medium">Add advance</span>.
                 </td>
               </tr>
             ) : (
               advances.map((a) => (
                 <tr key={a.id} className="border-b border-slate-100">
-                  <td className="px-2 py-2">
-                    <button
-                      type="button"
-                      title="Copy advance JSON"
-                      aria-label="Copy advance JSON"
-                      className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
-                      onClick={() => void copyJson('advance', a)}
-                    >
-                      <CopyIcon />
-                    </button>
+                  <td className="whitespace-nowrap px-2 py-2">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        title="Edit advance"
+                        aria-label="Edit advance"
+                        disabled={readOnly}
+                        className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
+                        onClick={() => setPanelAdvance(a)}
+                      >
+                        <PencilIcon />
+                      </button>
+                      <button
+                        type="button"
+                        title="Delete advance"
+                        aria-label="Delete advance"
+                        disabled={readOnly}
+                        className={`${iconBtnClass} text-red-600 hover:border-red-200 hover:bg-red-50`}
+                        onClick={() => {
+                          if (!confirm('Delete this advance? Usages must be removed first.')) return
+                          void (async () => {
+                            try {
+                              await api.deleteVendorAdvance(projectId, a.id)
+                              await reload()
+                              await onRefresh()
+                            } catch (err) {
+                              onError(err instanceof Error ? err.message : 'Delete failed.')
+                            }
+                          })()
+                        }}
+                      >
+                        <TrashIcon />
+                      </button>
+                    </div>
                   </td>
                   <td className="px-4 py-2">{formatDate(a.paidDate)}</td>
                   {!vendorId ? (
@@ -125,12 +166,33 @@ export function VendorDisbursementsAdvancesSection({
                   <td className="px-4 py-2">
                     {a.remainingBalance != null ? formatMoney(a.remainingBalance, a.currency) : '—'}
                   </td>
+                  <td className="px-4 py-2 capitalize text-slate-600">{a.paymentSourceKind}</td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {panelAdvance != null ? (
+        <div className="fixed inset-0 z-[60] bg-slate-900/40" aria-hidden="true">
+          <div className="absolute inset-y-0 right-0 w-full max-w-xl">
+            <VendorAdvanceRecordPanel
+              projectId={projectId}
+              vendors={vendors}
+              initialAdvance={panelAdvance === 'new' ? null : panelAdvance}
+              defaultVendorId={vendorId}
+              onClose={() => setPanelAdvance(null)}
+              onSaved={async () => {
+                await reload()
+                await onRefresh()
+              }}
+              onError={onError}
+              className="h-full overflow-y-auto rounded-none border-0 border-l border-slate-200 shadow-xl"
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

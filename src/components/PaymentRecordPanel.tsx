@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as api from '../api/dataApi'
 import type { Account, GlAccount, Invoice, Payment, VendorAdvance } from '../types'
+import { isBackendAuthEnabled } from '../config'
 import { formatMoney } from '../utils/format'
 import { invoiceGstAmount, invoiceTotalWithGst } from '../utils/invoiceTotals'
 
@@ -8,8 +9,36 @@ const paymentMethodOptions = ['Cash', 'Cheque', 'RTGS', 'Other'] as const
 
 type AdvanceLine = { key: string; advanceId: string; amountStr: string }
 
+type DisburseLine = {
+  key: string
+  partyName: string
+  paidAmountStr: string
+  invoiceNumber: string
+  datePaid: string
+  notes: string
+  glAccountId: string
+}
+
 function newLineKey() {
   return `al-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function newDisburseKey() {
+  return `dl-${Math.random().toString(36).slice(2, 10)}`
+}
+
+/** Single funding source for disbursement batch metadata when payment GL already posted. */
+function disbursementSourceKind(
+  fa: number,
+  fc: number,
+  fo: number,
+  adv: number,
+): 'account' | 'cash' | 'other' {
+  const n = (fa > 0 ? 1 : 0) + (fc > 0 ? 1 : 0) + (fo > 0 ? 1 : 0) + (adv > 0 ? 1 : 0)
+  if (n !== 1) return 'other'
+  if (fa > 0) return 'account'
+  if (fc > 0) return 'cash'
+  return 'other'
 }
 
 export function PaymentRecordPanel({
@@ -24,6 +53,7 @@ export function PaymentRecordPanel({
   onRefresh,
   onError,
   className,
+  layout = 'drawer',
 }: {
   projectId: string
   invoices: Invoice[]
@@ -37,6 +67,8 @@ export function PaymentRecordPanel({
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
   className?: string
+  /** `page` = full-width layout for vendor billing (less cramped than the right drawer). */
+  layout?: 'drawer' | 'page'
 }) {
   const editing = initialPayment != null
   const [invoiceId, setInvoiceId] = useState('')
@@ -56,6 +88,8 @@ export function PaymentRecordPanel({
   const [glAccounts, setGlAccounts] = useState<GlAccount[]>([])
   const [bankAccounts, setBankAccounts] = useState<Account[]>([])
   const [saving, setSaving] = useState(false)
+  const [includeDisbursement, setIncludeDisbursement] = useState(false)
+  const [disburseLines, setDisburseLines] = useState<DisburseLine[]>([])
 
   const selectedInvoice = useMemo(
     () => invoices.find((i) => i.id === invoiceId) ?? null,
@@ -86,6 +120,22 @@ export function PaymentRecordPanel({
   const payAmountNum = parseFloat(amount) || 0
   const fundingOk = Math.abs(fundingParsed.total - payAmountNum) < 0.02
 
+  const filledDisburseLines = useMemo(
+    () =>
+      disburseLines.filter(
+        (l) => l.partyName.trim() !== '' && (parseFloat(l.paidAmountStr) || 0) > 0,
+      ),
+    [disburseLines],
+  )
+  const disburseSum = useMemo(
+    () => filledDisburseLines.reduce((s, l) => s + (parseFloat(l.paidAmountStr) || 0), 0),
+    [filledDisburseLines],
+  )
+  /** If breakdown is on, require at least one line and totals must match payment. */
+  const disburseSectionOk =
+    !includeDisbursement ||
+    (filledDisburseLines.length > 0 && Math.abs(disburseSum - payAmountNum) < 0.02)
+
   useEffect(() => {
     let ignore = false
     void (async () => {
@@ -115,6 +165,8 @@ export function PaymentRecordPanel({
 
   useEffect(() => {
     if (initialPayment) {
+      setIncludeDisbursement(false)
+      setDisburseLines([])
       setInvoiceId(initialPayment.invoiceId)
       setAmount(String(initialPayment.amount))
       setPaidDate(initialPayment.paidDate.slice(0, 10))
@@ -174,6 +226,8 @@ export function PaymentRecordPanel({
       setFromCashAmt('')
       setFromOtherAmt('')
       setAdvanceLines([])
+      setIncludeDisbursement(false)
+      setDisburseLines([])
     }
   }, [initialPayment])
 
@@ -185,10 +239,14 @@ export function PaymentRecordPanel({
     }
   }, [initialPayment, defaultVendorId, invoices])
 
+  const pageLayout = layout === 'page'
+
   return (
     <div
       className={[
-        'rounded-none border border-slate-200 bg-white p-6 shadow-sm',
+        pageLayout
+          ? 'w-full max-w-4xl border-0 bg-white p-4 shadow-none sm:p-6'
+          : 'rounded-none border border-slate-200 bg-white p-6 shadow-sm',
         className,
       ]
         .filter(Boolean)
@@ -197,10 +255,11 @@ export function PaymentRecordPanel({
       <h2 className="text-lg font-medium text-slate-900">
         {editing ? 'Edit payment' : 'Record payment'}
       </h2>
-      <p className="mt-1 text-xs text-slate-500">
-        Total must equal the sum of amounts from vendor advances, bank account, cash, and other. Bank portion
-        requires an operating account (funds drawn from that account); GL credits use the standard clearing
-        accounts.
+      <p className="mt-1 text-sm text-slate-600">
+        Total must equal the sum of advances, bank, cash, and other. Bank portion requires an operating account.
+        {pageLayout
+          ? ' Optional: record how this payment breaks down to subcontractors (stored with the invoice; no extra GL).'
+          : ''}
       </p>
 
       <form
@@ -215,6 +274,25 @@ export function PaymentRecordPanel({
           if (fundingParsed.fa > 0 && !sourceAccountId.trim()) {
             onError('Select the bank account when paying from account.')
             return
+          }
+          if (!editing && includeDisbursement) {
+            if (filledDisburseLines.length === 0) {
+              onError('Add at least one subcontractor line with name and amount, or turn off subcontractor breakdown.')
+              return
+            }
+            if (Math.abs(disburseSum - payAmountNum) > 0.02) {
+              onError(
+                `Subcontractor paid amounts (${disburseSum.toFixed(2)}) must equal the payment total (${payAmountNum.toFixed(2)}).`,
+              )
+              return
+            }
+            const expGl = glAccountId.trim() || selectedInvoice?.glAccountId
+            if (!expGl) {
+              onError(
+                'Select a GL expense account on this form, or set one on the invoice, to save subcontractor lines.',
+              )
+              return
+            }
           }
           onError(null)
           setSaving(true)
@@ -251,6 +329,56 @@ export function PaymentRecordPanel({
                 comments: comments || undefined,
               })
             }
+
+            if (
+              !editing &&
+              includeDisbursement &&
+              filledDisburseLines.length > 0 &&
+              isBackendAuthEnabled() &&
+              selectedInvoice
+            ) {
+              const expGl = glAccountId.trim() || selectedInvoice.glAccountId
+              const advSum = advanceAllocations.reduce((s, a) => s + a.amount, 0)
+              try {
+                await api.createVendorDisbursementBatch(projectId, {
+                  vendorId: selectedInvoice.vendorId,
+                  invoiceId: selectedInvoice.id,
+                  lumpSumAmount: payAmountNum,
+                  currency: selectedInvoice.currency,
+                  paidToContractorDate: paidDate,
+                  paymentSourceKind: disbursementSourceKind(
+                    fundingParsed.fa,
+                    fundingParsed.fc,
+                    fundingParsed.fo,
+                    advSum,
+                  ),
+                  sourceAccountId: srcAcct,
+                  reference: reference.trim() || null,
+                  notes:
+                    comments.trim() || 'Subcontractor breakdown with invoice payment (GL on payment only).',
+                  glAccountId: expGl!,
+                  postToGeneralLedger: false,
+                  lines: filledDisburseLines.map((l) => ({
+                    partyName: l.partyName.trim(),
+                    paidAmount: parseFloat(l.paidAmountStr) || 0,
+                    invoiceNumber: l.invoiceNumber.trim() || null,
+                    datePaid: l.datePaid.trim() ? l.datePaid : null,
+                    notes: l.notes.trim() || null,
+                    glAccountId: l.glAccountId.trim() || null,
+                  })),
+                })
+              } catch (batchErr) {
+                onError(
+                  `Payment was saved, but subcontractor breakdown failed: ${
+                    batchErr instanceof Error ? batchErr.message : 'Unknown error'
+                  }. Add breakdown from the invoice screen or adjust and retry.`,
+                )
+                await onRefresh()
+                onClose()
+                return
+              }
+            }
+
             await onRefresh()
             onClose()
           } catch (err) {
@@ -545,10 +673,181 @@ export function PaymentRecordPanel({
           />
         </label>
 
+        {!editing ? (
+          <div className="sm:col-span-2 space-y-3 border-t border-slate-200 pt-6">
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-3">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0"
+                checked={includeDisbursement}
+                onChange={(e) => {
+                  setIncludeDisbursement(e.target.checked)
+                  if (e.target.checked && disburseLines.length === 0) {
+                    setDisburseLines([
+                      {
+                        key: newDisburseKey(),
+                        partyName: '',
+                        paidAmountStr: '',
+                        invoiceNumber: '',
+                        datePaid: paidDate || '',
+                        notes: '',
+                        glAccountId: '',
+                      },
+                    ])
+                  }
+                }}
+              />
+              <span>
+                <span className="text-sm font-medium text-slate-900">Subcontractor / disbursement lines</span>
+                <span className="mt-1 block text-xs text-slate-600">
+                  Optional. Record who was paid under this invoice payment. Line amounts must sum to the payment
+                  total. Uses the same GL as the payment (no duplicate posting). Backend API only.
+                </span>
+              </span>
+            </label>
+            {includeDisbursement ? (
+              <div className="space-y-4 rounded-xl border border-teal-100 bg-teal-50/30 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-slate-800">Subcontractors</span>
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-teal-800 hover:underline"
+                    onClick={() =>
+                      setDisburseLines((rows) => [
+                        ...rows,
+                        {
+                          key: newDisburseKey(),
+                          partyName: '',
+                          paidAmountStr: '',
+                          invoiceNumber: '',
+                          datePaid: paidDate || '',
+                          notes: '',
+                          glAccountId: '',
+                        },
+                      ])
+                    }
+                  >
+                    + Add line
+                  </button>
+                </div>
+                {disburseLines.map((line, idx) => (
+                  <div
+                    key={line.key}
+                    className="grid gap-3 border-b border-teal-100/80 pb-4 last:border-0 last:pb-0 sm:grid-cols-2"
+                  >
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs font-medium text-slate-600">Subcontractor / party name</span>
+                      <input
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                        value={line.partyName}
+                        placeholder="e.g. ABC Electricals"
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setDisburseLines((rows) => rows.map((r, i) => (i === idx ? { ...r, partyName: v } : r)))
+                        }}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-600">Paid amount</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                        value={line.paidAmountStr}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setDisburseLines((rows) => rows.map((r, i) => (i === idx ? { ...r, paidAmountStr: v } : r)))
+                        }}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-600">Their invoice # (optional)</span>
+                      <input
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                        value={line.invoiceNumber}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setDisburseLines((rows) =>
+                            rows.map((r, i) => (i === idx ? { ...r, invoiceNumber: v } : r)),
+                          )
+                        }}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-600">Date paid (optional)</span>
+                      <input
+                        type="date"
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                        value={line.datePaid}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setDisburseLines((rows) => rows.map((r, i) => (i === idx ? { ...r, datePaid: v } : r)))
+                        }}
+                      />
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs font-medium text-slate-600">Line GL (optional)</span>
+                      <select
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                        value={line.glAccountId}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setDisburseLines((rows) => rows.map((r, i) => (i === idx ? { ...r, glAccountId: v } : r)))
+                        }}
+                      >
+                        <option value="">— Same as batch / invoice —</option>
+                        {glAccounts.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.code} — {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs font-medium text-slate-600">Notes (optional)</span>
+                      <input
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                        value={line.notes}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setDisburseLines((rows) => rows.map((r, i) => (i === idx ? { ...r, notes: v } : r)))
+                        }}
+                      />
+                    </label>
+                    <div className="sm:col-span-2">
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-red-600 hover:underline"
+                        onClick={() => setDisburseLines((rows) => rows.filter((_, i) => i !== idx))}
+                      >
+                        Remove line
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <div
+                  className={`rounded-lg px-3 py-2 text-sm ${
+                    includeDisbursement && filledDisburseLines.length > 0 && Math.abs(disburseSum - payAmountNum) < 0.02
+                      ? 'border border-emerald-200 bg-emerald-50 text-emerald-900'
+                      : 'border border-amber-200 bg-amber-50 text-amber-950'
+                  }`}
+                >
+                  {filledDisburseLines.length === 0
+                    ? 'Add at least one line with a name and amount, or turn off subcontractor breakdown.'
+                    : `Subcontractor lines total: ${disburseSum.toFixed(2)} · Payment: ${payAmountNum.toFixed(2)}${
+                        Math.abs(disburseSum - payAmountNum) < 0.02 ? ' — OK' : ' — must match'
+                      }`}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="sm:col-span-2 mt-1 flex gap-2">
           <button
             type="submit"
-            disabled={saving || !fundingOk}
+            disabled={saving || !fundingOk || !disburseSectionOk}
             className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
           >
             {saving ? 'Saving…' : editing ? 'Save changes' : 'Add payment'}

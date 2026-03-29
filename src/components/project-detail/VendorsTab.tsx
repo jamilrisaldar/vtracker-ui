@@ -198,15 +198,54 @@ export function VendorsTab({
                 </dl>
               ) : null}
             </div>
-            <button
-              type="button"
-              onClick={() => setDetailVendorId(null)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
-            >
-              Back to vendors
-            </button>
+            {panelMode !== 'payment' ? (
+              <button
+                type="button"
+                onClick={() => setDetailVendorId(null)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              >
+                Back to vendors
+              </button>
+            ) : null}
           </div>
           <div className="px-6 py-6 space-y-10">
+            {panelMode === 'payment' && !readOnly ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                  <h3 className="text-base font-medium text-slate-900">Record payment</h3>
+                  <button
+                    type="button"
+                    onClick={closePanel}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Back to billing
+                  </button>
+                </div>
+                <PaymentRecordPanel
+                  layout="page"
+                  projectId={projectId}
+                  invoices={paymentInvoiceOptions}
+                  payments={payments}
+                  vendorAdvances={vendorAdvances}
+                  vendorName={vendorName}
+                  initialPayment={editingPayment}
+                  defaultVendorId={detailVendorId ?? undefined}
+                  onClose={closePanel}
+                  onRefresh={async () => {
+                    await onRefresh()
+                    if (detailVendorId) {
+                      const pay = await api.listPaymentsByVendor(projectId, detailVendorId)
+                      setDisplayPayments(pay)
+                      const adv = await api.listVendorAdvances(projectId)
+                      setVendorAdvances(adv)
+                    }
+                  }}
+                  onError={onError}
+                  className="w-full"
+                />
+              </div>
+            ) : (
+              <>
               <section>
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-base font-medium text-slate-900">Invoices</h3>
@@ -424,6 +463,7 @@ export function VendorsTab({
                   <VendorDisbursementsAdvancesSection
                     projectId={projectId}
                     vendorId={detailVendorId}
+                    vendors={vendors}
                     vendorName={vendorName}
                     onRefresh={onRefresh}
                     onError={onError}
@@ -431,6 +471,8 @@ export function VendorsTab({
                   />
                 </div>
               </section>
+              </>
+            )}
           </div>
         </div>
       ) : (
@@ -546,9 +588,9 @@ export function VendorsTab({
         </section>
       )}
 
-      {panelMode !== null && (
+      {panelMode !== null && !(panelMode === 'payment' && detailVendorId != null) && (
         <div className="fixed inset-0 z-[52] bg-slate-900/40" aria-hidden="true">
-          <div className="absolute inset-y-0 right-0 w-full max-w-xl">
+          <div className="absolute inset-y-0 right-0 w-full max-w-2xl">
             {panelMode === 'vendor' ? (
               <VendorAddPanel
                 projectId={projectId}
@@ -590,6 +632,8 @@ export function VendorsTab({
                   if (detailVendorId) {
                     const pay = await api.listPaymentsByVendor(projectId, detailVendorId)
                     setDisplayPayments(pay)
+                    const adv = await api.listVendorAdvances(projectId)
+                    setVendorAdvances(adv)
                   }
                 }}
                 onError={onError}

@@ -213,6 +213,8 @@ export interface Invoice {
   dueDate?: string
   status: InvoiceStatus
   glAccountId?: string
+  /** Accounts payable GL used for invoice accrual and payment clearing when set with expense GL. */
+  apGlAccountId?: string
   /** User-entered notes (optional). */
   memo?: string
 }
@@ -220,7 +222,12 @@ export interface Invoice {
 /** PATCH body: `dueDate: null` clears the due date; `glAccountId: null` clears GL; `memo: null` clears memo. */
 export type InvoiceUpdatePatch = Partial<
   Pick<Invoice, 'vendorId' | 'invoiceNumber' | 'amount' | 'gstAmount' | 'currency' | 'issuedDate' | 'status'>
-> & { dueDate?: string | null; glAccountId?: string | null; memo?: string | null }
+> & {
+  dueDate?: string | null
+  glAccountId?: string | null
+  apGlAccountId?: string | null
+  memo?: string | null
+}
 
 export type PaymentSourceKind = 'account' | 'cash' | 'other'
 /** Invoice payments may combine funding sources (stored as `mixed` when more than one). */
@@ -305,6 +312,8 @@ export interface VendorDisbursementBatch {
   reference?: string
   notes?: string
   glAccountId: string
+  /** False when batch only stores subcontractor breakdown (GL posted on invoice payment). */
+  postToGeneralLedger?: boolean
   createdAt: string
   lines?: VendorDisbursementLine[]
 }

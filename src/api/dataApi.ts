@@ -446,6 +446,7 @@ export async function createInvoice(input: {
   dueDate?: string
   status?: InvoiceStatus
   glAccountId?: string | null
+  apGlAccountId?: string | null
   memo?: string | null
 }): Promise<Invoice> {
   if (isBackendAuthEnabled()) return backend.createInvoice(input)

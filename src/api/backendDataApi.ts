@@ -808,6 +808,7 @@ export async function createInvoice(input: {
   dueDate?: string
   status?: InvoiceStatus
   glAccountId?: string | null
+  apGlAccountId?: string | null
   memo?: string | null
 }): Promise<Invoice> {
   return apiRequest<Invoice>(
@@ -824,6 +825,7 @@ export async function createInvoice(input: {
         dueDate: input.dueDate,
         status: input.status ?? 'sent',
         glAccountId: input.glAccountId ?? undefined,
+        apGlAccountId: input.apGlAccountId ?? undefined,
         ...(input.memo !== undefined ? { memo: input.memo } : {}),
       }),
     },
@@ -845,6 +847,7 @@ export async function updateInvoice(
   if (patch.dueDate !== undefined) body.dueDate = patch.dueDate
   if (patch.status != null) body.status = patch.status
   if (patch.glAccountId !== undefined) body.glAccountId = patch.glAccountId
+  if (patch.apGlAccountId !== undefined) body.apGlAccountId = patch.apGlAccountId
   if (patch.memo !== undefined) body.memo = patch.memo
   return apiRequest<Invoice>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/invoices/${encodeURIComponent(invoiceId)}`,

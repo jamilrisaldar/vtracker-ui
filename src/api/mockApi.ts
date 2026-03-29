@@ -1517,6 +1517,7 @@ export async function createInvoice(input: {
   dueDate?: string
   status?: InvoiceStatus
   glAccountId?: string | null
+  apGlAccountId?: string | null
   memo?: string | null
 }): Promise<Invoice> {
   await delay()
@@ -1543,6 +1544,7 @@ export async function createInvoice(input: {
     dueDate: input.dueDate,
     status: input.status ?? 'sent',
     glAccountId: input.glAccountId ?? undefined,
+    apGlAccountId: input.apGlAccountId ?? undefined,
     memo: memoTrim,
   }
   db.invoices.push(inv)
@@ -1582,6 +1584,7 @@ export async function updateInvoice(
   }
   if (patch.status != null) inv.status = patch.status
   if (patch.glAccountId !== undefined) inv.glAccountId = patch.glAccountId ?? undefined
+  if (patch.apGlAccountId !== undefined) inv.apGlAccountId = patch.apGlAccountId ?? undefined
   if (patch.memo !== undefined) {
     inv.memo =
       patch.memo != null && String(patch.memo).trim() !== '' ? String(patch.memo).trim() : undefined
@@ -2387,6 +2390,15 @@ const MOCK_GL_ACCOUNTS: GlAccount[] = [
     categoryName: 'Assets',
     code: '1350',
     name: 'Vendor advances (prepaid)',
+    isActive: true,
+  },
+  {
+    id: 'a2002010-0000-4000-8000-000000000001',
+    glCategoryId: 'b1000002-0000-4000-8000-000000000001',
+    categoryCode: 'LIABILITIES',
+    categoryName: 'Liabilities',
+    code: '2010',
+    name: 'Accounts payable',
     isActive: true,
   },
 ]

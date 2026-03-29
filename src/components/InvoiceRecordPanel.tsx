@@ -34,6 +34,7 @@ export function InvoiceRecordPanel({
   const [dueDate, setDueDate] = useState('')
   const [status, setStatus] = useState<InvoiceStatus>('sent')
   const [glAccountId, setGlAccountId] = useState('')
+  const [apGlAccountId, setApGlAccountId] = useState('')
   const [memo, setMemo] = useState('')
   const [glAccounts, setGlAccounts] = useState<GlAccount[]>([])
   const [saving, setSaving] = useState(false)
@@ -67,6 +68,7 @@ export function InvoiceRecordPanel({
       setDueDate(initialInvoice.dueDate?.slice(0, 10) ?? '')
       setStatus(initialInvoice.status)
       setGlAccountId(initialInvoice.glAccountId ?? '')
+      setApGlAccountId(initialInvoice.apGlAccountId ?? '')
       setMemo(initialInvoice.memo ?? '')
     } else {
       setVendorId(defaultVendorId ?? '')
@@ -77,6 +79,7 @@ export function InvoiceRecordPanel({
       setDueDate('')
       setStatus('sent')
       setGlAccountId('')
+      setApGlAccountId('')
       setMemo('')
     }
   }, [initialInvoice, defaultVendorId])
@@ -137,6 +140,7 @@ export function InvoiceRecordPanel({
           setSaving(true)
           try {
             const glId = glAccountId.trim() ? glAccountId.trim() : undefined
+            const apId = apGlAccountId.trim() ? apGlAccountId.trim() : undefined
             const memoPayload = memo.trim() === '' ? null : memo.trim()
             if (editing && initialInvoice) {
               await api.updateInvoice(
@@ -150,6 +154,7 @@ export function InvoiceRecordPanel({
                   dueDate: dueDate.trim() ? dueDate : null,
                   status,
                   glAccountId: glId ?? null,
+                  apGlAccountId: apId ?? null,
                   memo: memoPayload,
                 },
                 projectId,
@@ -164,6 +169,7 @@ export function InvoiceRecordPanel({
                 issuedDate,
                 dueDate: dueDate || undefined,
                 glAccountId: glId,
+                apGlAccountId: apId,
                 memo: memoPayload,
               })
             }
@@ -279,11 +285,35 @@ export function InvoiceRecordPanel({
             onChange={(e) => setGlAccountId(e.target.value)}
           >
             <option value="">— None —</option>
-            {glAccounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.code} — {a.name}
-              </option>
-            ))}
+            {glAccounts
+              .filter((a) => {
+                const c = a.categoryCode
+                return c === 'EXPENSES' || c === 'COGS' || c === 'OTHER_EXPENSE'
+              })
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.code} — {a.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-medium text-slate-600">
+            Accounts payable GL (optional — accrual posting when set with expense account)
+          </span>
+          <select
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            value={apGlAccountId}
+            onChange={(e) => setApGlAccountId(e.target.value)}
+          >
+            <option value="">— None —</option>
+            {glAccounts
+              .filter((a) => a.categoryCode === 'LIABILITIES')
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.code} — {a.name}
+                </option>
+              ))}
           </select>
         </label>
 
