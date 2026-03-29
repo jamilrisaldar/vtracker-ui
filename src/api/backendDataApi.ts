@@ -27,6 +27,13 @@ import type {
   ProjectStatus,
   PlotSaleReportResponse,
   Vendor,
+  GlCategory,
+  GlSubcategory,
+  GlAccount,
+  GeneralLedgerEntry,
+  VendorDisbursementBatch,
+  VendorAdvance,
+  VendorAdvanceUsage,
 } from '../types'
 import { apiUrl } from '../config'
 import { fetchCsrfToken, readErrorMessage } from './backendAuth'
@@ -727,6 +734,7 @@ export async function listVendors(projectId: string): Promise<Vendor[]> {
 export async function createVendor(input: {
   projectId: string
   name: string
+  vendorKind?: Vendor['vendorKind']
   contactName?: string
   email?: string
   phone?: string
@@ -738,6 +746,7 @@ export async function createVendor(input: {
       method: 'POST',
       body: JSON.stringify({
         name: input.name.trim(),
+        vendorKind: input.vendorKind,
         contactName: input.contactName?.trim(),
         email: input.email?.trim(),
         phone: input.phone?.trim(),
@@ -750,12 +759,13 @@ export async function createVendor(input: {
 export async function updateVendor(
   vendorId: string,
   patch: Partial<
-    Pick<Vendor, 'name' | 'contactName' | 'email' | 'phone' | 'notes'>
+    Pick<Vendor, 'name' | 'vendorKind' | 'contactName' | 'email' | 'phone' | 'notes'>
   >,
   projectId: string,
 ): Promise<Vendor> {
   const body: Record<string, unknown> = {}
   if (patch.name != null) body.name = patch.name.trim()
+  if (patch.vendorKind != null) body.vendorKind = patch.vendorKind
   if (patch.contactName !== undefined) body.contactName = patch.contactName?.trim()
   if (patch.email !== undefined) body.email = patch.email?.trim()
   if (patch.phone !== undefined) body.phone = patch.phone?.trim()
@@ -796,6 +806,7 @@ export async function createInvoice(input: {
   issuedDate: string
   dueDate?: string
   status?: InvoiceStatus
+  glAccountId?: string | null
 }): Promise<Invoice> {
   return apiRequest<Invoice>(
     `/api/v1/projects/${encodeURIComponent(input.projectId)}/invoices`,
@@ -809,6 +820,7 @@ export async function createInvoice(input: {
         issuedDate: input.issuedDate,
         dueDate: input.dueDate,
         status: input.status ?? 'sent',
+        glAccountId: input.glAccountId ?? undefined,
       }),
     },
   )
@@ -827,6 +839,7 @@ export async function updateInvoice(
   if (patch.issuedDate != null) body.issuedDate = patch.issuedDate
   if (patch.dueDate !== undefined) body.dueDate = patch.dueDate
   if (patch.status != null) body.status = patch.status
+  if (patch.glAccountId !== undefined) body.glAccountId = patch.glAccountId
   return apiRequest<Invoice>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/invoices/${encodeURIComponent(invoiceId)}`,
     { method: 'PATCH', body: JSON.stringify(body) },
@@ -865,6 +878,13 @@ export async function createPayment(input: {
   isPaymentPartial?: boolean
   paymentSource?: string
   comments?: string
+  paymentSourceKind?: Payment['paymentSourceKind']
+  sourceAccountId?: string | null
+  glAccountId?: string | null
+  fromAccountAmount?: number
+  fromCashAmount?: number
+  fromOtherAmount?: number
+  advanceAllocations?: { advanceId: string; amount: number }[]
 }): Promise<Payment> {
   return apiRequest<Payment>(
     `/api/v1/projects/${encodeURIComponent(input.projectId)}/payments`,
@@ -880,6 +900,13 @@ export async function createPayment(input: {
         isPaymentPartial: input.isPaymentPartial,
         paymentSource: input.paymentSource?.trim(),
         comments: input.comments?.trim(),
+        paymentSourceKind: input.paymentSourceKind,
+        sourceAccountId: input.sourceAccountId,
+        glAccountId: input.glAccountId,
+        fromAccountAmount: input.fromAccountAmount,
+        fromCashAmount: input.fromCashAmount,
+        fromOtherAmount: input.fromOtherAmount,
+        advanceAllocations: input.advanceAllocations,
       }),
     },
   )
@@ -898,6 +925,13 @@ export async function updatePayment(
     isPaymentPartial: boolean
     paymentSource: string | null
     comments: string | null
+    paymentSourceKind: Payment['paymentSourceKind']
+    sourceAccountId: string | null
+    glAccountId: string | null
+    fromAccountAmount: number
+    fromCashAmount: number
+    fromOtherAmount: number
+    advanceAllocations: { advanceId: string; amount: number }[]
   }>,
 ): Promise<Payment> {
   const body: Record<string, unknown> = {}
@@ -910,6 +944,13 @@ export async function updatePayment(
   if (patch.isPaymentPartial !== undefined) body.isPaymentPartial = patch.isPaymentPartial
   if (patch.paymentSource !== undefined) body.paymentSource = patch.paymentSource
   if (patch.comments !== undefined) body.comments = patch.comments
+  if (patch.paymentSourceKind != null) body.paymentSourceKind = patch.paymentSourceKind
+  if (patch.sourceAccountId !== undefined) body.sourceAccountId = patch.sourceAccountId
+  if (patch.glAccountId !== undefined) body.glAccountId = patch.glAccountId
+  if (patch.fromAccountAmount !== undefined) body.fromAccountAmount = patch.fromAccountAmount
+  if (patch.fromCashAmount !== undefined) body.fromCashAmount = patch.fromCashAmount
+  if (patch.fromOtherAmount !== undefined) body.fromOtherAmount = patch.fromOtherAmount
+  if (patch.advanceAllocations !== undefined) body.advanceAllocations = patch.advanceAllocations
   return apiRequest<Payment>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/payments/${encodeURIComponent(paymentId)}`,
     { method: 'PATCH', body: JSON.stringify(body) },
@@ -1294,4 +1335,232 @@ export async function getPlotSaleReport(
     `/api/v1/projects/${encodeURIComponent(projectId)}/plot-sale-report?${q.toString()}`,
   )
   return normalizePlotSaleReport(raw)
+}
+
+// —— GL & vendor payment tracking ——
+
+export async function listGlCategories(): Promise<GlCategory[]> {
+  return apiRequest<GlCategory[]>('/api/v1/gl/categories')
+}
+
+export async function listGlAccounts(opts?: { includeInactive?: boolean }): Promise<GlAccount[]> {
+  const q = opts?.includeInactive ? '?includeInactive=true' : ''
+  return apiRequest<GlAccount[]>(`/api/v1/gl/accounts${q}`)
+}
+
+export async function listGlSubcategories(opts?: { glCategoryId?: string }): Promise<GlSubcategory[]> {
+  const q = opts?.glCategoryId
+    ? `?glCategoryId=${encodeURIComponent(opts.glCategoryId)}`
+    : ''
+  return apiRequest<GlSubcategory[]>(`/api/v1/gl/subcategories${q}`)
+}
+
+export async function createGlSubcategory(input: {
+  glCategoryId: string
+  code: string
+  name: string
+  sortOrder?: number
+}): Promise<GlSubcategory> {
+  return apiRequest<GlSubcategory>('/api/v1/gl/subcategories', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function updateGlSubcategory(
+  subcategoryId: string,
+  patch: Partial<{ code: string; name: string; sortOrder: number }>,
+): Promise<GlSubcategory> {
+  return apiRequest<GlSubcategory>(`/api/v1/gl/subcategories/${encodeURIComponent(subcategoryId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+}
+
+export async function deleteGlSubcategory(subcategoryId: string): Promise<void> {
+  await apiRequest<void>(`/api/v1/gl/subcategories/${encodeURIComponent(subcategoryId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function createGlCategory(input: {
+  code: string
+  name: string
+  sortOrder?: number
+}): Promise<GlCategory> {
+  return apiRequest<GlCategory>('/api/v1/gl/categories', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function updateGlCategory(
+  categoryId: string,
+  patch: Partial<{ code: string; name: string; sortOrder: number }>,
+): Promise<GlCategory> {
+  return apiRequest<GlCategory>(`/api/v1/gl/categories/${encodeURIComponent(categoryId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+}
+
+export async function deleteGlCategory(categoryId: string): Promise<void> {
+  await apiRequest<void>(`/api/v1/gl/categories/${encodeURIComponent(categoryId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function createGlAccount(input: {
+  glCategoryId: string
+  glSubcategoryId?: string
+  code: string
+  name: string
+  isActive?: boolean
+}): Promise<GlAccount> {
+  return apiRequest<GlAccount>('/api/v1/gl/accounts', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function updateGlAccount(
+  accountId: string,
+  patch: Partial<{
+    glCategoryId: string
+    glSubcategoryId: string | null
+    code: string
+    name: string
+    isActive: boolean
+  }>,
+): Promise<GlAccount> {
+  return apiRequest<GlAccount>(`/api/v1/gl/accounts/${encodeURIComponent(accountId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+}
+
+export async function listGeneralLedgerEntries(
+  projectId: string,
+  opts?: { startDate?: string; endDate?: string },
+): Promise<GeneralLedgerEntry[]> {
+  const q = new URLSearchParams()
+  if (opts?.startDate) q.set('startDate', opts.startDate.slice(0, 10))
+  if (opts?.endDate) q.set('endDate', opts.endDate.slice(0, 10))
+  const qs = q.toString()
+  const path = `/api/v1/projects/${encodeURIComponent(projectId)}/general-ledger-entries${qs ? `?${qs}` : ''}`
+  return apiRequest<GeneralLedgerEntry[]>(path)
+}
+
+export async function listVendorDisbursementBatches(projectId: string): Promise<VendorDisbursementBatch[]> {
+  return apiRequest<VendorDisbursementBatch[]>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-disbursement-batches`,
+  )
+}
+
+export async function getVendorDisbursementBatch(
+  projectId: string,
+  batchId: string,
+): Promise<VendorDisbursementBatch | null> {
+  return apiRequest<VendorDisbursementBatch>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-disbursement-batches/${encodeURIComponent(batchId)}`,
+  )
+}
+
+export async function createVendorDisbursementBatch(
+  projectId: string,
+  body: Record<string, unknown>,
+): Promise<VendorDisbursementBatch> {
+  return apiRequest<VendorDisbursementBatch>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-disbursement-batches`,
+    { method: 'POST', body: JSON.stringify(body) },
+  )
+}
+
+export async function updateVendorDisbursementBatch(
+  projectId: string,
+  batchId: string,
+  patch: Record<string, unknown>,
+): Promise<VendorDisbursementBatch> {
+  return apiRequest<VendorDisbursementBatch>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-disbursement-batches/${encodeURIComponent(batchId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+  )
+}
+
+export async function deleteVendorDisbursementBatch(projectId: string, batchId: string): Promise<void> {
+  await apiRequest<void>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-disbursement-batches/${encodeURIComponent(batchId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export async function listVendorAdvances(projectId: string): Promise<VendorAdvance[]> {
+  return apiRequest<VendorAdvance[]>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-advances`,
+  )
+}
+
+export async function getVendorAdvance(projectId: string, advanceId: string): Promise<VendorAdvance | null> {
+  return apiRequest<VendorAdvance>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-advances/${encodeURIComponent(advanceId)}`,
+  )
+}
+
+export async function createVendorAdvance(projectId: string, body: Record<string, unknown>): Promise<VendorAdvance> {
+  return apiRequest<VendorAdvance>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-advances`,
+    { method: 'POST', body: JSON.stringify(body) },
+  )
+}
+
+export async function updateVendorAdvance(
+  projectId: string,
+  advanceId: string,
+  patch: Record<string, unknown>,
+): Promise<VendorAdvance> {
+  return apiRequest<VendorAdvance>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-advances/${encodeURIComponent(advanceId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+  )
+}
+
+export async function deleteVendorAdvance(projectId: string, advanceId: string): Promise<void> {
+  await apiRequest<void>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-advances/${encodeURIComponent(advanceId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export async function createVendorAdvanceUsage(
+  projectId: string,
+  advanceId: string,
+  body: Record<string, unknown>,
+): Promise<VendorAdvanceUsage> {
+  return apiRequest<VendorAdvanceUsage>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-advances/${encodeURIComponent(advanceId)}/usages`,
+    { method: 'POST', body: JSON.stringify(body) },
+  )
+}
+
+export async function updateVendorAdvanceUsage(
+  projectId: string,
+  advanceId: string,
+  usageId: string,
+  patch: Record<string, unknown>,
+): Promise<VendorAdvanceUsage> {
+  return apiRequest<VendorAdvanceUsage>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-advances/${encodeURIComponent(advanceId)}/usages/${encodeURIComponent(usageId)}`,
+    { method: 'PATCH', body: JSON.stringify(patch) },
+  )
+}
+
+export async function deleteVendorAdvanceUsage(
+  projectId: string,
+  advanceId: string,
+  usageId: string,
+): Promise<void> {
+  await apiRequest<void>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-advances/${encodeURIComponent(advanceId)}/usages/${encodeURIComponent(usageId)}`,
+    { method: 'DELETE' },
+  )
 }

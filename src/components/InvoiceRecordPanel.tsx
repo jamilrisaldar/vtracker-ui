@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import * as api from '../api/dataApi'
-import type { Invoice, InvoiceStatus, Vendor } from '../types'
+import type { GlAccount, Invoice, InvoiceStatus, Vendor } from '../types'
 
 const statusOptions: InvoiceStatus[] = ['draft', 'sent', 'paid', 'partial', 'overdue']
 
@@ -28,7 +28,24 @@ export function InvoiceRecordPanel({
   const [issuedDate, setIssuedDate] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [status, setStatus] = useState<InvoiceStatus>('sent')
+  const [glAccountId, setGlAccountId] = useState('')
+  const [glAccounts, setGlAccounts] = useState<GlAccount[]>([])
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let ignore = false
+    void (async () => {
+      try {
+        const list = await api.listGlAccounts()
+        if (!ignore) setGlAccounts(list.filter((a) => a.isActive !== false))
+      } catch {
+        if (!ignore) setGlAccounts([])
+      }
+    })()
+    return () => {
+      ignore = true
+    }
+  }, [])
 
   useEffect(() => {
     if (initialInvoice) {
@@ -38,6 +55,7 @@ export function InvoiceRecordPanel({
       setIssuedDate(initialInvoice.issuedDate.slice(0, 10))
       setDueDate(initialInvoice.dueDate?.slice(0, 10) ?? '')
       setStatus(initialInvoice.status)
+      setGlAccountId(initialInvoice.glAccountId ?? '')
     } else {
       setVendorId('')
       setInvoiceNo('')
@@ -45,6 +63,7 @@ export function InvoiceRecordPanel({
       setIssuedDate('')
       setDueDate('')
       setStatus('sent')
+      setGlAccountId('')
     }
   }, [initialInvoice])
 
@@ -68,6 +87,7 @@ export function InvoiceRecordPanel({
           onError(null)
           setSaving(true)
           try {
+            const glId = glAccountId.trim() ? glAccountId.trim() : undefined
             if (editing && initialInvoice) {
               await api.updateInvoice(
                 initialInvoice.id,
@@ -78,6 +98,7 @@ export function InvoiceRecordPanel({
                   issuedDate,
                   dueDate: dueDate.trim() ? dueDate : null,
                   status,
+                  glAccountId: glId ?? null,
                 },
                 projectId,
               )
@@ -89,6 +110,7 @@ export function InvoiceRecordPanel({
                 amount: Number(amount),
                 issuedDate,
                 dueDate: dueDate || undefined,
+                glAccountId: glId,
               })
             }
             await onRefresh()
@@ -172,6 +194,21 @@ export function InvoiceRecordPanel({
             </select>
           </label>
         ) : null}
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-medium text-slate-600">GL expense account (optional)</span>
+          <select
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            value={glAccountId}
+            onChange={(e) => setGlAccountId(e.target.value)}
+          >
+            <option value="">— None —</option>
+            {glAccounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.code} — {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <div className="sm:col-span-2 mt-1 flex gap-2">
           <button

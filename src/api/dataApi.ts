@@ -26,6 +26,13 @@ import type {
   ProjectStatus,
   PlotSaleReportResponse,
   Vendor,
+  GlCategory,
+  GlSubcategory,
+  GlAccount,
+  GeneralLedgerEntry,
+  VendorDisbursementBatch,
+  VendorAdvance,
+  VendorAdvanceUsage,
 } from '../types'
 import { isBackendAuthEnabled } from '../config'
 import * as backend from './backendDataApi'
@@ -383,6 +390,7 @@ export async function listVendors(projectId: string): Promise<Vendor[]> {
 export async function createVendor(input: {
   projectId: string
   name: string
+  vendorKind?: Vendor['vendorKind']
   contactName?: string
   email?: string
   phone?: string
@@ -395,7 +403,7 @@ export async function createVendor(input: {
 export async function updateVendor(
   vendorId: string,
   patch: Partial<
-    Pick<Vendor, 'name' | 'contactName' | 'email' | 'phone' | 'notes'>
+    Pick<Vendor, 'name' | 'vendorKind' | 'contactName' | 'email' | 'phone' | 'notes'>
   >,
   projectId?: string,
 ): Promise<Vendor> {
@@ -436,6 +444,7 @@ export async function createInvoice(input: {
   issuedDate: string
   dueDate?: string
   status?: InvoiceStatus
+  glAccountId?: string | null
 }): Promise<Invoice> {
   if (isBackendAuthEnabled()) return backend.createInvoice(input)
   return mock.createInvoice(input)
@@ -485,6 +494,13 @@ export async function createPayment(input: {
   isPaymentPartial?: boolean
   paymentSource?: string
   comments?: string
+  paymentSourceKind?: Payment['paymentSourceKind']
+  sourceAccountId?: string | null
+  glAccountId?: string | null
+  fromAccountAmount?: number
+  fromCashAmount?: number
+  fromOtherAmount?: number
+  advanceAllocations?: { advanceId: string; amount: number }[]
 }): Promise<Payment> {
   if (isBackendAuthEnabled()) return backend.createPayment(input)
   return mock.createPayment(input)
@@ -503,6 +519,13 @@ export async function updatePayment(
     isPaymentPartial: boolean
     paymentSource: string | null
     comments: string | null
+    paymentSourceKind: Payment['paymentSourceKind']
+    sourceAccountId: string | null
+    glAccountId: string | null
+    fromAccountAmount: number
+    fromCashAmount: number
+    fromOtherAmount: number
+    advanceAllocations: { advanceId: string; amount: number }[]
   }>,
 ): Promise<Payment> {
   if (isBackendAuthEnabled()) return backend.updatePayment(paymentId, projectId, patch)
@@ -681,4 +704,192 @@ export async function deleteDocument(
 export async function getProjectReport(projectId: string): Promise<ProjectReport> {
   if (isBackendAuthEnabled()) return backend.getProjectReport(projectId)
   return mock.getProjectReport(projectId)
+}
+
+export async function listGlCategories(): Promise<GlCategory[]> {
+  if (isBackendAuthEnabled()) return backend.listGlCategories()
+  return mock.listGlCategories()
+}
+
+export async function listGlAccounts(opts?: { includeInactive?: boolean }): Promise<GlAccount[]> {
+  if (isBackendAuthEnabled()) return backend.listGlAccounts(opts)
+  return mock.listGlAccounts(opts)
+}
+
+export async function listGlSubcategories(opts?: { glCategoryId?: string }): Promise<GlSubcategory[]> {
+  if (isBackendAuthEnabled()) return backend.listGlSubcategories(opts)
+  return mock.listGlSubcategories(opts)
+}
+
+export async function createGlSubcategory(input: {
+  glCategoryId: string
+  code: string
+  name: string
+  sortOrder?: number
+}): Promise<GlSubcategory> {
+  if (isBackendAuthEnabled()) return backend.createGlSubcategory(input)
+  return mock.createGlSubcategory(input)
+}
+
+export async function updateGlSubcategory(
+  subcategoryId: string,
+  patch: Partial<{ code: string; name: string; sortOrder: number }>,
+): Promise<GlSubcategory> {
+  if (isBackendAuthEnabled()) return backend.updateGlSubcategory(subcategoryId, patch)
+  return mock.updateGlSubcategory(subcategoryId, patch)
+}
+
+export async function deleteGlSubcategory(subcategoryId: string): Promise<void> {
+  if (isBackendAuthEnabled()) return backend.deleteGlSubcategory(subcategoryId)
+  return mock.deleteGlSubcategory(subcategoryId)
+}
+
+export async function createGlCategory(input: {
+  code: string
+  name: string
+  sortOrder?: number
+}): Promise<GlCategory> {
+  if (isBackendAuthEnabled()) return backend.createGlCategory(input)
+  return mock.createGlCategory(input)
+}
+
+export async function updateGlCategory(
+  categoryId: string,
+  patch: Partial<{ code: string; name: string; sortOrder: number }>,
+): Promise<GlCategory> {
+  if (isBackendAuthEnabled()) return backend.updateGlCategory(categoryId, patch)
+  return mock.updateGlCategory(categoryId, patch)
+}
+
+export async function deleteGlCategory(categoryId: string): Promise<void> {
+  if (isBackendAuthEnabled()) return backend.deleteGlCategory(categoryId)
+  return mock.deleteGlCategory(categoryId)
+}
+
+export async function createGlAccount(input: {
+  glCategoryId: string
+  glSubcategoryId?: string
+  code: string
+  name: string
+  isActive?: boolean
+}): Promise<GlAccount> {
+  if (isBackendAuthEnabled()) return backend.createGlAccount(input)
+  return mock.createGlAccount(input)
+}
+
+export async function updateGlAccount(
+  accountId: string,
+  patch: Partial<{
+    glCategoryId: string
+    glSubcategoryId: string | null
+    code: string
+    name: string
+    isActive: boolean
+  }>,
+): Promise<GlAccount> {
+  if (isBackendAuthEnabled()) return backend.updateGlAccount(accountId, patch)
+  return mock.updateGlAccount(accountId, patch)
+}
+
+export async function listGeneralLedgerEntries(
+  projectId: string,
+  opts?: { startDate?: string; endDate?: string },
+): Promise<GeneralLedgerEntry[]> {
+  if (isBackendAuthEnabled()) return backend.listGeneralLedgerEntries(projectId, opts)
+  return mock.listGeneralLedgerEntries(projectId, opts)
+}
+
+export async function listVendorDisbursementBatches(projectId: string): Promise<VendorDisbursementBatch[]> {
+  if (isBackendAuthEnabled()) return backend.listVendorDisbursementBatches(projectId)
+  return mock.listVendorDisbursementBatches(projectId)
+}
+
+export async function getVendorDisbursementBatch(
+  projectId: string,
+  batchId: string,
+): Promise<VendorDisbursementBatch | null> {
+  if (isBackendAuthEnabled()) return backend.getVendorDisbursementBatch(projectId, batchId)
+  return mock.getVendorDisbursementBatch(projectId, batchId)
+}
+
+export async function createVendorDisbursementBatch(
+  projectId: string,
+  body: Record<string, unknown>,
+): Promise<VendorDisbursementBatch> {
+  if (isBackendAuthEnabled()) return backend.createVendorDisbursementBatch(projectId, body)
+  return mock.createVendorDisbursementBatch(projectId, body)
+}
+
+export async function updateVendorDisbursementBatch(
+  projectId: string,
+  batchId: string,
+  patch: Record<string, unknown>,
+): Promise<VendorDisbursementBatch> {
+  if (isBackendAuthEnabled()) return backend.updateVendorDisbursementBatch(projectId, batchId, patch)
+  return mock.updateVendorDisbursementBatch(projectId, batchId, patch)
+}
+
+export async function deleteVendorDisbursementBatch(projectId: string, batchId: string): Promise<void> {
+  if (isBackendAuthEnabled()) return backend.deleteVendorDisbursementBatch(projectId, batchId)
+  return mock.deleteVendorDisbursementBatch(projectId, batchId)
+}
+
+export async function listVendorAdvances(projectId: string): Promise<VendorAdvance[]> {
+  if (isBackendAuthEnabled()) return backend.listVendorAdvances(projectId)
+  return mock.listVendorAdvances(projectId)
+}
+
+export async function getVendorAdvance(projectId: string, advanceId: string): Promise<VendorAdvance | null> {
+  if (isBackendAuthEnabled()) return backend.getVendorAdvance(projectId, advanceId)
+  return mock.getVendorAdvance(projectId, advanceId)
+}
+
+export async function createVendorAdvance(
+  projectId: string,
+  body: Record<string, unknown>,
+): Promise<VendorAdvance> {
+  if (isBackendAuthEnabled()) return backend.createVendorAdvance(projectId, body)
+  return mock.createVendorAdvance(projectId, body)
+}
+
+export async function updateVendorAdvance(
+  projectId: string,
+  advanceId: string,
+  patch: Record<string, unknown>,
+): Promise<VendorAdvance> {
+  if (isBackendAuthEnabled()) return backend.updateVendorAdvance(projectId, advanceId, patch)
+  return mock.updateVendorAdvance(projectId, advanceId, patch)
+}
+
+export async function deleteVendorAdvance(projectId: string, advanceId: string): Promise<void> {
+  if (isBackendAuthEnabled()) return backend.deleteVendorAdvance(projectId, advanceId)
+  return mock.deleteVendorAdvance(projectId, advanceId)
+}
+
+export async function createVendorAdvanceUsage(
+  projectId: string,
+  advanceId: string,
+  body: Record<string, unknown>,
+): Promise<VendorAdvanceUsage> {
+  if (isBackendAuthEnabled()) return backend.createVendorAdvanceUsage(projectId, advanceId, body)
+  return mock.createVendorAdvanceUsage(projectId, advanceId, body)
+}
+
+export async function updateVendorAdvanceUsage(
+  projectId: string,
+  advanceId: string,
+  usageId: string,
+  patch: Record<string, unknown>,
+): Promise<VendorAdvanceUsage> {
+  if (isBackendAuthEnabled()) return backend.updateVendorAdvanceUsage(projectId, advanceId, usageId, patch)
+  return mock.updateVendorAdvanceUsage(projectId, advanceId, usageId, patch)
+}
+
+export async function deleteVendorAdvanceUsage(
+  projectId: string,
+  advanceId: string,
+  usageId: string,
+): Promise<void> {
+  if (isBackendAuthEnabled()) return backend.deleteVendorAdvanceUsage(projectId, advanceId, usageId)
+  return mock.deleteVendorAdvanceUsage(projectId, advanceId, usageId)
 }

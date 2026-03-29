@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as api from '../../api/dataApi'
-import type { Invoice, Payment, Vendor } from '../../types'
+import type { Invoice, Payment, Vendor, VendorAdvance } from '../../types'
+
+function vendorKindLabel(k: Vendor['vendorKind']): string {
+  if (k === 'person') return 'Person'
+  if (k === 'government') return 'Government'
+  return 'Company'
+}
 import { formatDate, formatMoney } from '../../utils/format'
 import { InvoiceRecordPanel } from '../InvoiceRecordPanel'
 import { PaymentRecordPanel } from '../PaymentRecordPanel'
 import { VendorAddPanel } from '../VendorAddPanel'
+import { VendorDisbursementsAdvancesSection } from './VendorDisbursementsAdvancesSection'
 
 const iconBtnClass =
   'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'
@@ -59,8 +66,26 @@ export function VendorsTab({
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null)
   const [displayInvoices, setDisplayInvoices] = useState<Invoice[]>(invoices)
   const [displayPayments, setDisplayPayments] = useState<Payment[]>(payments)
+  const [vendorAdvances, setVendorAdvances] = useState<VendorAdvance[]>([])
 
   const actionsDisabled = readOnly
+
+  const vendorBalances = useMemo(() => {
+    return vendors.map((v) => {
+      const invoiced = invoices.filter((i) => i.vendorId === v.id).reduce((s, i) => s + i.amount, 0)
+      const paid = payments.filter((p) => p.vendorId === v.id).reduce((s, p) => s + p.amount, 0)
+      const advancePool = vendorAdvances
+        .filter((a) => a.vendorId === v.id)
+        .reduce((s, a) => s + (a.remainingBalance ?? 0), 0)
+      return {
+        vendor: v,
+        invoiced,
+        paid,
+        apBalance: invoiced - paid,
+        advancePool,
+      }
+    })
+  }, [vendors, invoices, payments, vendorAdvances])
 
   const closePanel = () => {
     setPanelMode(null)
@@ -108,11 +133,75 @@ export function VendorsTab({
     }
   }, [projectId, selectedVendorId, onError])
 
+  useEffect(() => {
+    let ignore = false
+    void (async () => {
+      try {
+        const adv = await api.listVendorAdvances(projectId)
+        if (!ignore) setVendorAdvances(adv)
+      } catch {
+        if (!ignore) setVendorAdvances([])
+      }
+    })()
+    return () => {
+      ignore = true
+    }
+  }, [projectId, payments.length])
+
   return (
     <div className="space-y-10">
       {readOnly ? (
         <p className="text-xs text-amber-800/90">View-only: vendor and billing changes are disabled.</p>
       ) : null}
+
+      <section>
+        <h2 className="text-lg font-medium text-slate-900">Vendor balances</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          A/P balance = invoiced − paid (negative means overpaid). Advance pool = unused vendor prepayments
+          remaining.
+        </p>
+        <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <table className="min-w-full text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Vendor</th>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Invoiced</th>
+                <th className="px-4 py-3">Paid</th>
+                <th className="px-4 py-3">A/P balance</th>
+                <th className="px-4 py-3">Advance pool</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vendorBalances.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                    No vendors.
+                  </td>
+                </tr>
+              ) : (
+                vendorBalances.map((row) => (
+                  <tr key={row.vendor.id} className="border-b border-slate-100">
+                    <td className="px-4 py-2 font-medium text-slate-900">{row.vendor.name}</td>
+                    <td className="px-4 py-2 text-slate-600">{vendorKindLabel(row.vendor.vendorKind)}</td>
+                    <td className="px-4 py-2">{formatMoney(row.invoiced)}</td>
+                    <td className="px-4 py-2">{formatMoney(row.paid)}</td>
+                    <td
+                      className={`px-4 py-2 font-medium ${
+                        row.apBalance > 0 ? 'text-amber-800' : row.apBalance < 0 ? 'text-teal-800' : 'text-slate-700'
+                      }`}
+                    >
+                      {formatMoney(row.apBalance)}
+                    </td>
+                    <td className="px-4 py-2 text-slate-700">{formatMoney(row.advancePool)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       {panelMode !== null && (
         <div className="fixed inset-0 z-50 bg-slate-900/40" aria-hidden="true">
           <div className="absolute inset-y-0 right-0 w-full max-w-xl">
@@ -139,6 +228,8 @@ export function VendorsTab({
               <PaymentRecordPanel
                 projectId={projectId}
                 invoices={paymentInvoiceOptions}
+                payments={payments}
+                vendorAdvances={vendorAdvances}
                 vendorName={vendorName}
                 initialPayment={editingPayment}
                 onClose={closePanel}
@@ -186,6 +277,7 @@ export function VendorsTab({
               <tr>
                 <th className="w-11 min-w-[2.75rem] px-2 py-3">Actions</th>
                 <th className="px-4 py-3">Vendor</th>
+                <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Contact</th>
                 <th className="px-4 py-3">Email</th>
                 <th className="w-11 min-w-[2.75rem] px-2 py-3">
@@ -196,7 +288,7 @@ export function VendorsTab({
             <tbody>
               {vendors.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
                     No vendors yet.
                   </td>
                 </tr>
@@ -233,6 +325,7 @@ export function VendorsTab({
                       </button>
                     </td>
                     <td className="px-4 py-3 font-medium text-slate-900">{v.name}</td>
+                    <td className="px-4 py-3 text-slate-600">{vendorKindLabel(v.vendorKind)}</td>
                     <td className="px-4 py-3 text-slate-600">
                       {v.contactName ?? '—'}
                     </td>
@@ -491,6 +584,14 @@ export function VendorsTab({
           </table>
         </div>
       </section>
+
+      <VendorDisbursementsAdvancesSection
+        projectId={projectId}
+        vendorName={vendorName}
+        onRefresh={onRefresh}
+        onError={onError}
+        readOnly={readOnly}
+      />
     </div>
   )
 }

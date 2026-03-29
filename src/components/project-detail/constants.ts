@@ -25,6 +25,7 @@ export const tabs = [
   { id: 'phases', label: 'Phases & tasks' },
   { id: 'plots', label: 'Plots' },
   { id: 'vendors', label: 'Vendors & billing' },
+  { id: 'gl', label: 'GL' },
   { id: 'documents', label: 'Documents' },
   { id: 'reports', label: 'Reports' },
 ] as const

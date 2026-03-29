@@ -120,6 +120,8 @@ export const ensureTabData = createAsyncThunk(
       case 'vendors':
         if (!loaded.vendorBilling) await dispatch(fetchVendorBilling(projectId)).unwrap()
         return
+      case 'gl':
+        return
       case 'documents': {
         const tasks: Promise<unknown>[] = []
         if (!loaded.documents) tasks.push(dispatch(fetchDocuments(projectId)).unwrap())

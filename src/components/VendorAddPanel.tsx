@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import * as api from '../api/dataApi'
-import type { Vendor } from '../types'
+import type { Vendor, VendorKind } from '../types'
+
+const VENDOR_KIND_OPTIONS: { value: VendorKind; label: string }[] = [
+  { value: 'company', label: 'Company' },
+  { value: 'person', label: 'Person' },
+  { value: 'government', label: 'Government' },
+]
 
 export function VendorAddPanel({
   projectId,
@@ -22,6 +28,7 @@ export function VendorAddPanel({
   const [contact, setContact] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
+  const [vendorKind, setVendorKind] = useState<VendorKind>('company')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -30,11 +37,13 @@ export function VendorAddPanel({
       setContact(initialVendor.contactName ?? '')
       setEmail(initialVendor.email ?? '')
       setPhone(initialVendor.phone ?? '')
+      setVendorKind(initialVendor.vendorKind ?? 'company')
     } else {
       setName('')
       setContact('')
       setEmail('')
       setPhone('')
+      setVendorKind('company')
     }
   }, [initialVendor])
 
@@ -63,6 +72,7 @@ export function VendorAddPanel({
                 initialVendor.id,
                 {
                   name: name.trim(),
+                  vendorKind,
                   contactName: contact.trim() || undefined,
                   email: email.trim() || undefined,
                   phone: phone.trim() || undefined,
@@ -73,6 +83,7 @@ export function VendorAddPanel({
               await api.createVendor({
                 projectId,
                 name,
+                vendorKind,
                 contactName: contact || undefined,
                 email: email || undefined,
                 phone: phone || undefined,
@@ -95,6 +106,20 @@ export function VendorAddPanel({
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-medium text-slate-600">Vendor type</span>
+          <select
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            value={vendorKind}
+            onChange={(e) => setVendorKind(e.target.value as VendorKind)}
+          >
+            {VENDOR_KIND_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="block">
           <span className="text-xs font-medium text-slate-600">Contact</span>

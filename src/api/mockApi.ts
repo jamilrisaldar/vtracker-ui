@@ -25,6 +25,13 @@ import type {
   PlotSaleReportResponse,
   User,
   Vendor,
+  GlCategory,
+  GlSubcategory,
+  GlAccount,
+  GeneralLedgerEntry,
+  VendorDisbursementBatch,
+  VendorAdvance,
+  VendorAdvanceUsage,
 } from '../types'
 import { isBackendAuthEnabled } from '../config'
 import { enrichAccountFixedDeposit } from '../utils/fixedDepositMetrics'
@@ -1381,17 +1388,26 @@ export async function deleteCombinedPlotSaleGroup(
 
 // —— Vendors ——
 
+function normalizeVendor(v: Vendor): Vendor {
+  const k = v.vendorKind
+  const vendorKind =
+    k === 'person' || k === 'government' || k === 'company' ? k : 'company'
+  return { ...v, vendorKind }
+}
+
 export async function listVendors(projectId: string): Promise<Vendor[]> {
   await delay()
   if (!(await getProject(projectId))) throw new Error('Not found')
   return loadDb()
     .vendors.filter((v) => v.projectId === projectId)
+    .map(normalizeVendor)
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function createVendor(input: {
   projectId: string
   name: string
+  vendorKind?: Vendor['vendorKind']
   contactName?: string
   email?: string
   phone?: string
@@ -1401,10 +1417,15 @@ export async function createVendor(input: {
   const project = await getProject(input.projectId)
   if (!project) throw new Error('Not found')
   const db = loadDb()
+  const vk =
+    input.vendorKind === 'person' || input.vendorKind === 'government'
+      ? input.vendorKind
+      : 'company'
   const v: Vendor = {
     id: id('ven'),
     projectId: input.projectId,
     name: input.name.trim(),
+    vendorKind: vk,
     contactName: input.contactName?.trim() || undefined,
     email: input.email?.trim() || undefined,
     phone: input.phone?.trim() || undefined,
@@ -1413,13 +1434,13 @@ export async function createVendor(input: {
   db.vendors.push(v)
   project.updatedAt = nowIso()
   saveDb(db)
-  return v
+  return normalizeVendor(v)
 }
 
 export async function updateVendor(
   vendorId: string,
   patch: Partial<
-    Pick<Vendor, 'name' | 'contactName' | 'email' | 'phone' | 'notes'>
+    Pick<Vendor, 'name' | 'vendorKind' | 'contactName' | 'email' | 'phone' | 'notes'>
   >,
   _projectId?: string,
 ): Promise<Vendor> {
@@ -1431,7 +1452,9 @@ export async function updateVendor(
   if (_projectId && v.projectId !== _projectId) throw new Error('Not found')
   const proj = db.projects.find((p) => p.id === v.projectId)
   if (!proj) throw new Error('Not found')
+  if (!v.vendorKind) v.vendorKind = 'company'
   if (patch.name != null) v.name = patch.name.trim()
+  if (patch.vendorKind !== undefined) v.vendorKind = patch.vendorKind
   if (patch.contactName !== undefined)
     v.contactName = patch.contactName?.trim() || undefined
   if (patch.email !== undefined) v.email = patch.email?.trim() || undefined
@@ -1439,7 +1462,7 @@ export async function updateVendor(
   if (patch.notes !== undefined) v.notes = patch.notes?.trim() || undefined
   proj.updatedAt = nowIso()
   saveDb(db)
-  return v
+  return normalizeVendor(v)
 }
 
 export async function deleteVendor(vendorId: string, _projectId?: string): Promise<void> {
@@ -1491,6 +1514,7 @@ export async function createInvoice(input: {
   issuedDate: string
   dueDate?: string
   status?: InvoiceStatus
+  glAccountId?: string | null
 }): Promise<Invoice> {
   await delay()
   const project = await getProject(input.projectId)
@@ -1510,6 +1534,7 @@ export async function createInvoice(input: {
     issuedDate: input.issuedDate,
     dueDate: input.dueDate,
     status: input.status ?? 'sent',
+    glAccountId: input.glAccountId ?? undefined,
   }
   db.invoices.push(inv)
   project.updatedAt = nowIso()
@@ -1546,6 +1571,7 @@ export async function updateInvoice(
     inv.dueDate = patch.dueDate === null ? undefined : patch.dueDate
   }
   if (patch.status != null) inv.status = patch.status
+  if (patch.glAccountId !== undefined) inv.glAccountId = patch.glAccountId ?? undefined
   proj.updatedAt = nowIso()
   saveDb(db)
   return inv
@@ -1594,6 +1620,13 @@ export async function createPayment(input: {
   isPaymentPartial?: boolean
   paymentSource?: string
   comments?: string
+  paymentSourceKind?: Payment['paymentSourceKind']
+  sourceAccountId?: string | null
+  glAccountId?: string | null
+  fromAccountAmount?: number
+  fromCashAmount?: number
+  fromOtherAmount?: number
+  advanceAllocations?: { advanceId: string; amount: number }[]
 }): Promise<Payment> {
   await delay()
   const project = await getProject(input.projectId)
@@ -1603,6 +1636,27 @@ export async function createPayment(input: {
     (i) => i.id === input.invoiceId && i.projectId === input.projectId,
   )
   if (!inv) throw new Error('Invoice not found')
+  const allocs = (input.advanceAllocations ?? []).filter((a) => a.amount > 0)
+  let fa = input.fromAccountAmount ?? 0
+  let fc = input.fromCashAmount ?? 0
+  let fo = input.fromOtherAmount ?? 0
+  const advSum = allocs.reduce((s, a) => s + a.amount, 0)
+  if (fa === 0 && fc === 0 && fo === 0 && advSum === 0) {
+    const kind = input.paymentSourceKind ?? 'other'
+    if (kind === 'account') fa = input.amount
+    else if (kind === 'cash') fc = input.amount
+    else fo = input.amount
+  }
+  const sumFund = fa + fc + fo + advSum
+  if (Math.abs(sumFund - input.amount) > 0.01) {
+    throw new Error(`Payment funding (${sumFund}) must equal payment amount (${input.amount})`)
+  }
+  if (fa > 0 && (input.sourceAccountId == null || String(input.sourceAccountId).trim() === '')) {
+    throw new Error('sourceAccountId is required when paying from a bank account')
+  }
+  const parts = (fa > 0 ? 1 : 0) + (fc > 0 ? 1 : 0) + (fo > 0 ? 1 : 0) + (advSum > 0 ? 1 : 0)
+  const psk: Payment['paymentSourceKind'] =
+    parts > 1 ? 'mixed' : fa > 0 ? 'account' : fc > 0 ? 'cash' : 'other'
   const pay: Payment = {
     id: id('pay'),
     invoiceId: input.invoiceId,
@@ -1616,6 +1670,13 @@ export async function createPayment(input: {
     isPaymentPartial: input.isPaymentPartial ?? false,
     paymentSource: input.paymentSource?.trim() || undefined,
     comments: input.comments?.trim() || undefined,
+    paymentSourceKind: psk,
+    sourceAccountId: input.sourceAccountId ?? undefined,
+    glAccountId: input.glAccountId ?? undefined,
+    fromAccountAmount: fa,
+    fromCashAmount: fc,
+    fromOtherAmount: fo,
+    advanceAllocations: allocs.length ? allocs : undefined,
   }
   db.payments.push(pay)
   const paidTotal = db.payments
@@ -1652,6 +1713,13 @@ export async function updatePayment(
     isPaymentPartial: boolean
     paymentSource: string | null
     comments: string | null
+    paymentSourceKind: Payment['paymentSourceKind']
+    sourceAccountId: string | null
+    glAccountId: string | null
+    fromAccountAmount: number
+    fromCashAmount: number
+    fromOtherAmount: number
+    advanceAllocations: { advanceId: string; amount: number }[]
   }>,
 ): Promise<Payment> {
   await delay()
@@ -1681,6 +1749,16 @@ export async function updatePayment(
   if (patch.isPaymentPartial !== undefined) pay.isPaymentPartial = patch.isPaymentPartial
   if (patch.paymentSource !== undefined) pay.paymentSource = patch.paymentSource ?? undefined
   if (patch.comments !== undefined) pay.comments = patch.comments ?? undefined
+  if (patch.paymentSourceKind !== undefined) pay.paymentSourceKind = patch.paymentSourceKind
+  if (patch.sourceAccountId !== undefined) pay.sourceAccountId = patch.sourceAccountId ?? undefined
+  if (patch.glAccountId !== undefined) pay.glAccountId = patch.glAccountId ?? undefined
+  if (patch.fromAccountAmount !== undefined) pay.fromAccountAmount = patch.fromAccountAmount
+  if (patch.fromCashAmount !== undefined) pay.fromCashAmount = patch.fromCashAmount
+  if (patch.fromOtherAmount !== undefined) pay.fromOtherAmount = patch.fromOtherAmount
+  if (patch.advanceAllocations !== undefined) {
+    pay.advanceAllocations = patch.advanceAllocations.filter((a) => a.amount > 0)
+    if (pay.advanceAllocations.length === 0) delete pay.advanceAllocations
+  }
 
   for (const iid of invoicesToRecompute) {
     mockRecomputeInvoicePaymentStatus(db, iid)
@@ -2246,4 +2324,351 @@ export async function getProjectReport(projectId: string): Promise<ProjectReport
     invoiceCount: invoices.length,
     paymentCount: payments.length,
   }
+}
+
+// —— GL & vendor payment tracking (mock: chart seed only; project flows need real API + migration 027) ——
+
+const MOCK_GL_CATEGORIES: GlCategory[] = [
+  { id: 'b1000001-0000-4000-8000-000000000001', code: 'ASSETS', name: 'Assets', sortOrder: 10 },
+  { id: 'b1000002-0000-4000-8000-000000000001', code: 'LIABILITIES', name: 'Liabilities', sortOrder: 20 },
+  { id: 'b1000003-0000-4000-8000-000000000001', code: 'EQUITY', name: 'Equity', sortOrder: 30 },
+  { id: 'b1000004-0000-4000-8000-000000000001', code: 'INCOME', name: 'Income', sortOrder: 40 },
+  { id: 'b1000005-0000-4000-8000-000000000001', code: 'COGS', name: 'Cost of goods sold', sortOrder: 50 },
+  { id: 'b1000006-0000-4000-8000-000000000001', code: 'EXPENSES', name: 'Expenses', sortOrder: 60 },
+  { id: 'b1000009-0000-4000-8000-000000000001', code: 'TAXES', name: 'Taxes', sortOrder: 90 },
+]
+
+const MOCK_GL_SUBCATEGORIES: GlSubcategory[] = []
+
+const MOCK_GL_ACCOUNTS: GlAccount[] = [
+  {
+    id: 'a6006010-0000-4000-8000-000000000001',
+    glCategoryId: 'b1000006-0000-4000-8000-000000000001',
+    categoryCode: 'EXPENSES',
+    categoryName: 'Expenses',
+    code: '6010',
+    name: 'Subcontractors & job costs',
+    isActive: true,
+  },
+  {
+    id: 'a1001020-0000-4000-8000-000000000001',
+    glCategoryId: 'b1000001-0000-4000-8000-000000000001',
+    categoryCode: 'ASSETS',
+    categoryName: 'Assets',
+    code: '1020',
+    name: 'Bank payment clearing',
+    isActive: true,
+  },
+  {
+    id: 'a1001350-0000-4000-8000-000000000001',
+    glCategoryId: 'b1000001-0000-4000-8000-000000000001',
+    categoryCode: 'ASSETS',
+    categoryName: 'Assets',
+    code: '1350',
+    name: 'Vendor advances (prepaid)',
+    isActive: true,
+  },
+]
+
+export async function listGlCategories(): Promise<GlCategory[]> {
+  await delay()
+  return MOCK_GL_CATEGORIES.slice()
+}
+
+export async function listGlSubcategories(opts?: { glCategoryId?: string }): Promise<GlSubcategory[]> {
+  await delay()
+  let list = MOCK_GL_SUBCATEGORIES.slice()
+  if (opts?.glCategoryId) list = list.filter((s) => s.glCategoryId === opts.glCategoryId)
+  return list.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+}
+
+export async function createGlSubcategory(input: {
+  glCategoryId: string
+  code: string
+  name: string
+  sortOrder?: number
+}): Promise<GlSubcategory> {
+  await delay()
+  getUserIdOrThrow()
+  const cat = MOCK_GL_CATEGORIES.find((c) => c.id === input.glCategoryId)
+  if (!cat) throw new Error('Category not found')
+  const dup = MOCK_GL_SUBCATEGORIES.some(
+    (s) => s.glCategoryId === input.glCategoryId && s.code === input.code.trim(),
+  )
+  if (dup) throw new Error('Subcategory code already exists for this category')
+  const row: GlSubcategory = {
+    id: id('gls'),
+    glCategoryId: input.glCategoryId,
+    code: input.code.trim(),
+    name: input.name.trim(),
+    sortOrder: input.sortOrder ?? 0,
+  }
+  MOCK_GL_SUBCATEGORIES.push(row)
+  return row
+}
+
+export async function updateGlSubcategory(
+  subcategoryId: string,
+  patch: Partial<{ code: string; name: string; sortOrder: number }>,
+): Promise<GlSubcategory> {
+  await delay()
+  getUserIdOrThrow()
+  const row = MOCK_GL_SUBCATEGORIES.find((s) => s.id === subcategoryId)
+  if (!row) throw new Error('Not found')
+  if (patch.code != null) row.code = patch.code.trim()
+  if (patch.name != null) row.name = patch.name.trim()
+  if (patch.sortOrder != null) row.sortOrder = patch.sortOrder
+  return { ...row }
+}
+
+export async function deleteGlSubcategory(subcategoryId: string): Promise<void> {
+  await delay()
+  getUserIdOrThrow()
+  const i = MOCK_GL_SUBCATEGORIES.findIndex((s) => s.id === subcategoryId)
+  if (i < 0) throw new Error('Not found')
+  MOCK_GL_SUBCATEGORIES.splice(i, 1)
+  for (const a of MOCK_GL_ACCOUNTS) {
+    if (a.glSubcategoryId === subcategoryId) {
+      delete a.glSubcategoryId
+      delete a.subcategoryCode
+      delete a.subcategoryName
+    }
+  }
+}
+
+export async function listGlAccounts(opts?: { includeInactive?: boolean }): Promise<GlAccount[]> {
+  await delay()
+  const list = MOCK_GL_ACCOUNTS.slice()
+  if (opts?.includeInactive) return list.sort((a, b) => (a.code ?? '').localeCompare(b.code ?? ''))
+  return list.filter((a) => a.isActive !== false).sort((a, b) => (a.code ?? '').localeCompare(b.code ?? ''))
+}
+
+export async function createGlCategory(input: {
+  code: string
+  name: string
+  sortOrder?: number
+}): Promise<GlCategory> {
+  await delay()
+  getUserIdOrThrow()
+  const row: GlCategory = {
+    id: id('glc'),
+    code: input.code.trim(),
+    name: input.name.trim(),
+    sortOrder: input.sortOrder ?? 0,
+  }
+  MOCK_GL_CATEGORIES.push(row)
+  return row
+}
+
+export async function updateGlCategory(
+  categoryId: string,
+  patch: Partial<{ code: string; name: string; sortOrder: number }>,
+): Promise<GlCategory> {
+  await delay()
+  getUserIdOrThrow()
+  const row = MOCK_GL_CATEGORIES.find((c) => c.id === categoryId)
+  if (!row) throw new Error('Not found')
+  if (patch.code != null) row.code = patch.code.trim()
+  if (patch.name != null) row.name = patch.name.trim()
+  if (patch.sortOrder != null) row.sortOrder = patch.sortOrder
+  return { ...row }
+}
+
+export async function deleteGlCategory(categoryId: string): Promise<void> {
+  await delay()
+  getUserIdOrThrow()
+  if (MOCK_GL_ACCOUNTS.some((a) => a.glCategoryId === categoryId)) {
+    throw new Error('Cannot delete a GL category that still has accounts')
+  }
+  if (MOCK_GL_SUBCATEGORIES.some((s) => s.glCategoryId === categoryId)) {
+    const keep = MOCK_GL_SUBCATEGORIES.filter((s) => s.glCategoryId !== categoryId)
+    MOCK_GL_SUBCATEGORIES.length = 0
+    MOCK_GL_SUBCATEGORIES.push(...keep)
+  }
+  const i = MOCK_GL_CATEGORIES.findIndex((c) => c.id === categoryId)
+  if (i < 0) throw new Error('Not found')
+  MOCK_GL_CATEGORIES.splice(i, 1)
+}
+
+export async function createGlAccount(input: {
+  glCategoryId: string
+  glSubcategoryId?: string
+  code: string
+  name: string
+  isActive?: boolean
+}): Promise<GlAccount> {
+  await delay()
+  getUserIdOrThrow()
+  const cat = MOCK_GL_CATEGORIES.find((c) => c.id === input.glCategoryId)
+  if (!cat) throw new Error('Category not found')
+  let sub: GlSubcategory | undefined
+  if (input.glSubcategoryId) {
+    sub = MOCK_GL_SUBCATEGORIES.find(
+      (s) => s.id === input.glSubcategoryId && s.glCategoryId === input.glCategoryId,
+    )
+    if (!sub) throw new Error('Subcategory not found or wrong category')
+  }
+  const row: GlAccount = {
+    id: id('gla'),
+    glCategoryId: input.glCategoryId,
+    categoryCode: cat.code,
+    categoryName: cat.name,
+    code: input.code.trim(),
+    name: input.name.trim(),
+    isActive: input.isActive !== false,
+  }
+  if (sub) {
+    row.glSubcategoryId = sub.id
+    row.subcategoryCode = sub.code
+    row.subcategoryName = sub.name
+  }
+  MOCK_GL_ACCOUNTS.push(row)
+  return row
+}
+
+export async function updateGlAccount(
+  accountId: string,
+  patch: Partial<{
+    glCategoryId: string
+    glSubcategoryId: string | null
+    code: string
+    name: string
+    isActive: boolean
+  }>,
+): Promise<GlAccount> {
+  await delay()
+  getUserIdOrThrow()
+  const row = MOCK_GL_ACCOUNTS.find((a) => a.id === accountId)
+  if (!row) throw new Error('Not found')
+  if (patch.glCategoryId != null) {
+    const cat = MOCK_GL_CATEGORIES.find((c) => c.id === patch.glCategoryId)
+    if (!cat) throw new Error('Category not found')
+    row.glCategoryId = patch.glCategoryId
+    row.categoryCode = cat.code
+    row.categoryName = cat.name
+    if (
+      row.glSubcategoryId &&
+      !MOCK_GL_SUBCATEGORIES.some((s) => s.id === row.glSubcategoryId && s.glCategoryId === patch.glCategoryId)
+    ) {
+      delete row.glSubcategoryId
+      delete row.subcategoryCode
+      delete row.subcategoryName
+    }
+  }
+  if (patch.glSubcategoryId !== undefined) {
+    if (patch.glSubcategoryId === null) {
+      delete row.glSubcategoryId
+      delete row.subcategoryCode
+      delete row.subcategoryName
+    } else {
+      const sub = MOCK_GL_SUBCATEGORIES.find(
+        (s) => s.id === patch.glSubcategoryId && s.glCategoryId === row.glCategoryId,
+      )
+      if (!sub) throw new Error('Subcategory not found or wrong category')
+      row.glSubcategoryId = sub.id
+      row.subcategoryCode = sub.code
+      row.subcategoryName = sub.name
+    }
+  }
+  if (patch.code != null) row.code = patch.code.trim()
+  if (patch.name != null) row.name = patch.name.trim()
+  if (patch.isActive !== undefined) row.isActive = patch.isActive
+  return { ...row }
+}
+
+export async function listGeneralLedgerEntries(
+  projectId: string,
+  _opts?: { startDate?: string; endDate?: string },
+): Promise<GeneralLedgerEntry[]> {
+  await delay()
+  if (!(await getProject(projectId))) throw new Error('Not found')
+  return []
+}
+
+export async function listVendorDisbursementBatches(projectId: string): Promise<VendorDisbursementBatch[]> {
+  await delay()
+  if (!(await getProject(projectId))) throw new Error('Not found')
+  return []
+}
+
+export async function getVendorDisbursementBatch(
+  _projectId: string,
+  _batchId: string,
+): Promise<VendorDisbursementBatch | null> {
+  await delay()
+  return null
+}
+
+export async function createVendorDisbursementBatch(
+  _projectId: string,
+  _body: Record<string, unknown>,
+): Promise<VendorDisbursementBatch> {
+  throw new Error('Vendor disbursement batches are not persisted in mock mode. Use the backend API.')
+}
+
+export async function updateVendorDisbursementBatch(
+  _projectId: string,
+  _batchId: string,
+  _patch: Record<string, unknown>,
+): Promise<VendorDisbursementBatch> {
+  throw new Error('Vendor disbursement batches are not persisted in mock mode. Use the backend API.')
+}
+
+export async function deleteVendorDisbursementBatch(_projectId: string, _batchId: string): Promise<void> {
+  throw new Error('Vendor disbursement batches are not persisted in mock mode. Use the backend API.')
+}
+
+export async function listVendorAdvances(projectId: string): Promise<VendorAdvance[]> {
+  await delay()
+  if (!(await getProject(projectId))) throw new Error('Not found')
+  return []
+}
+
+export async function getVendorAdvance(_projectId: string, _advanceId: string): Promise<VendorAdvance | null> {
+  await delay()
+  return null
+}
+
+export async function createVendorAdvance(
+  _projectId: string,
+  _body: Record<string, unknown>,
+): Promise<VendorAdvance> {
+  throw new Error('Vendor advances are not persisted in mock mode. Use the backend API.')
+}
+
+export async function updateVendorAdvance(
+  _projectId: string,
+  _advanceId: string,
+  _patch: Record<string, unknown>,
+): Promise<VendorAdvance> {
+  throw new Error('Vendor advances are not persisted in mock mode. Use the backend API.')
+}
+
+export async function deleteVendorAdvance(_projectId: string, _advanceId: string): Promise<void> {
+  throw new Error('Vendor advances are not persisted in mock mode. Use the backend API.')
+}
+
+export async function createVendorAdvanceUsage(
+  _projectId: string,
+  _advanceId: string,
+  _body: Record<string, unknown>,
+): Promise<VendorAdvanceUsage> {
+  throw new Error('Vendor advances are not persisted in mock mode. Use the backend API.')
+}
+
+export async function updateVendorAdvanceUsage(
+  _projectId: string,
+  _advanceId: string,
+  _usageId: string,
+  _patch: Record<string, unknown>,
+): Promise<VendorAdvanceUsage> {
+  throw new Error('Vendor advances are not persisted in mock mode. Use the backend API.')
+}
+
+export async function deleteVendorAdvanceUsage(
+  _projectId: string,
+  _advanceId: string,
+  _usageId: string,
+): Promise<void> {
+  throw new Error('Vendor advances are not persisted in mock mode. Use the backend API.')
 }

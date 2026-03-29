@@ -184,10 +184,13 @@ export interface PlotSaleReportResponse {
   note: string
 }
 
+export type VendorKind = 'company' | 'person' | 'government'
+
 export interface Vendor {
   id: string
   projectId: string
   name: string
+  vendorKind: VendorKind
   contactName?: string
   email?: string
   phone?: string
@@ -204,12 +207,127 @@ export interface Invoice {
   issuedDate: string
   dueDate?: string
   status: InvoiceStatus
+  glAccountId?: string
 }
 
-/** PATCH body: `dueDate: null` clears the due date on the server. */
+/** PATCH body: `dueDate: null` clears the due date; `glAccountId: null` clears GL on the server. */
 export type InvoiceUpdatePatch = Partial<
   Pick<Invoice, 'vendorId' | 'invoiceNumber' | 'amount' | 'currency' | 'issuedDate' | 'status'>
-> & { dueDate?: string | null }
+> & { dueDate?: string | null; glAccountId?: string | null }
+
+export type PaymentSourceKind = 'account' | 'cash' | 'other'
+/** Invoice payments may combine funding sources (stored as `mixed` when more than one). */
+export type InvoicePaymentSourceKind = PaymentSourceKind | 'mixed'
+
+export interface PaymentAdvanceAllocation {
+  advanceId: string
+  amount: number
+}
+
+export interface GlCategory {
+  id: string
+  code: string
+  name: string
+  sortOrder: number
+}
+
+/** User-defined grouping under a top-level GL category (e.g. Current assets, Operating expenses). */
+export interface GlSubcategory {
+  id: string
+  glCategoryId: string
+  code: string
+  name: string
+  sortOrder: number
+}
+
+export interface GlAccount {
+  id: string
+  glCategoryId: string
+  categoryCode?: string
+  categoryName?: string
+  glSubcategoryId?: string
+  subcategoryCode?: string
+  subcategoryName?: string
+  code: string
+  name: string
+  isActive: boolean
+}
+
+export interface GeneralLedgerEntry {
+  id: string
+  projectId: string
+  entryDate: string
+  glAccountId: string
+  accountCode?: string
+  accountName?: string
+  debit: number
+  credit: number
+  memo?: string
+  sourceKind: string
+  sourceId: string
+  createdAt: string
+}
+
+export interface VendorDisbursementLine {
+  id: string
+  batchId: string
+  partyName: string
+  contactName?: string
+  contactPhone?: string
+  contactEmail?: string
+  invoiceNumber?: string
+  dueAmount?: number
+  paidAmount: number
+  datePaid?: string
+  gstAmount?: number
+  notes?: string
+  glAccountId?: string
+}
+
+export interface VendorDisbursementBatch {
+  id: string
+  projectId: string
+  vendorId: string
+  lumpSumAmount: number
+  currency: string
+  paidToContractorDate: string
+  paymentSourceKind: PaymentSourceKind
+  sourceAccountId?: string
+  reference?: string
+  notes?: string
+  glAccountId: string
+  createdAt: string
+  lines?: VendorDisbursementLine[]
+}
+
+export interface VendorAdvanceUsage {
+  id: string
+  advanceId: string
+  usageDate: string
+  description: string
+  amount: number
+  invoiceNumber?: string
+  gstAmount?: number
+  notes?: string
+  glAccountId?: string
+}
+
+export interface VendorAdvance {
+  id: string
+  projectId: string
+  vendorId: string
+  amount: number
+  currency: string
+  paidDate: string
+  paymentSourceKind: PaymentSourceKind
+  sourceAccountId?: string
+  reference?: string
+  notes?: string
+  prepaidGlAccountId: string
+  createdAt: string
+  remainingBalance?: number
+  usages?: VendorAdvanceUsage[]
+}
 
 export interface Payment {
   id: string
@@ -224,6 +342,14 @@ export interface Payment {
   isPaymentPartial?: boolean
   paymentSource?: string
   comments?: string
+  paymentSourceKind?: InvoicePaymentSourceKind
+  sourceAccountId?: string
+  glAccountId?: string
+  /** Bank / operating account portion (maps to GL bank clearing). */
+  fromAccountAmount?: number
+  fromCashAmount?: number
+  fromOtherAmount?: number
+  advanceAllocations?: PaymentAdvanceAllocation[]
 }
 
 /** Payment row + project label for account transaction linking (Accounts page). */
