@@ -282,6 +282,12 @@ export interface GeneralLedgerEntry {
   userNotes?: string
   sourceKind: string
   sourceId: string
+  /** Denormalized lineage (set on vendor billing postings). */
+  originVendorId?: string
+  originInvoiceId?: string
+  originPaymentId?: string
+  originVendorAdvanceId?: string
+  originVendorAdvanceUsageId?: string
   /** True when line is part of a user manual journal (`manual_journal`). */
   isManual?: boolean
   createdAt: string
