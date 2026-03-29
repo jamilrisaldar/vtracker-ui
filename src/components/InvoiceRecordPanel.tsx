@@ -2,13 +2,24 @@ import { useCallback, useEffect, useState } from 'react'
 import * as api from '../api/dataApi'
 import type { GlAccount, Invoice, InvoiceStatus, Vendor, VendorDisbursementBatch } from '../types'
 import { formatDate, formatMoney } from '../utils/format'
+import { MoneyAmount } from './MoneyAmount'
 
 const statusOptions: InvoiceStatus[] = ['draft', 'sent', 'paid', 'partial', 'overdue']
+
+function suggestedCopyInvoiceNumber(original: string): string {
+  const t = original.trim()
+  const suffix = ' (copy)'
+  const max = 128
+  if (t.length + suffix.length <= max) return t + suffix
+  return `${t.slice(0, max - suffix.length)}${suffix}`
+}
 
 export function InvoiceRecordPanel({
   projectId,
   vendors,
   initialInvoice = null,
+  /** When creating a new invoice, prefill from this row (mutually exclusive with `initialInvoice`). */
+  copyTemplateInvoice = null,
   defaultVendorId,
   onClose,
   onRefresh,
@@ -18,6 +29,7 @@ export function InvoiceRecordPanel({
   projectId: string
   vendors: Vendor[]
   initialInvoice?: Invoice | null
+  copyTemplateInvoice?: Invoice | null
   /** Pre-select vendor when creating an invoice from a vendor’s detail view. */
   defaultVendorId?: string
   onClose: () => void
@@ -26,6 +38,7 @@ export function InvoiceRecordPanel({
   className?: string
 }) {
   const editing = initialInvoice != null
+  const copying = !editing && copyTemplateInvoice != null
   const [vendorId, setVendorId] = useState('')
   const [invoiceNo, setInvoiceNo] = useState('')
   const [amount, setAmount] = useState('')
@@ -70,6 +83,18 @@ export function InvoiceRecordPanel({
       setGlAccountId(initialInvoice.glAccountId ?? '')
       setApGlAccountId(initialInvoice.apGlAccountId ?? '')
       setMemo(initialInvoice.memo ?? '')
+    } else if (copyTemplateInvoice) {
+      const src = copyTemplateInvoice
+      setVendorId(src.vendorId)
+      setInvoiceNo(suggestedCopyInvoiceNumber(src.invoiceNumber))
+      setAmount(String(src.amount))
+      setGstAmount(String(src.gstAmount ?? 0))
+      setIssuedDate(src.issuedDate.slice(0, 10))
+      setDueDate(src.dueDate?.slice(0, 10) ?? '')
+      setStatus(src.status === 'draft' ? 'draft' : 'sent')
+      setGlAccountId(src.glAccountId ?? '')
+      setApGlAccountId(src.apGlAccountId ?? '')
+      setMemo(src.memo ?? '')
     } else {
       setVendorId(defaultVendorId ?? '')
       setInvoiceNo('')
@@ -82,7 +107,7 @@ export function InvoiceRecordPanel({
       setApGlAccountId('')
       setMemo('')
     }
-  }, [initialInvoice, defaultVendorId])
+  }, [initialInvoice, defaultVendorId, copyTemplateInvoice])
 
   const reloadDisbursements = useCallback(async () => {
     if (!initialInvoice) {
@@ -120,7 +145,7 @@ export function InvoiceRecordPanel({
         .join(' ')}
     >
       <h2 className="text-lg font-medium text-slate-900">
-        {editing ? 'Edit invoice' : 'Record invoice'}
+        {editing ? 'Edit invoice' : copying ? 'Copy invoice' : 'Record invoice'}
       </h2>
       <form
         className="mt-4 grid gap-4 sm:grid-cols-2"
@@ -163,7 +188,7 @@ export function InvoiceRecordPanel({
               await api.createInvoice({
                 projectId,
                 vendorId,
-                invoiceNumber: invoiceNo,
+                invoiceNumber: invoiceNo.trim(),
                 amount: Number(amount),
                 gstAmount: gstNum,
                 issuedDate,
@@ -323,7 +348,7 @@ export function InvoiceRecordPanel({
             disabled={saving}
             className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-60"
           >
-            {saving ? 'Saving…' : editing ? 'Save changes' : 'Add invoice'}
+            {saving ? 'Saving…' : editing ? 'Save changes' : copying ? 'Create invoice' : 'Add invoice'}
           </button>
           <button
             type="button"
@@ -395,7 +420,7 @@ export function InvoiceRecordPanel({
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Paid to contractor</th>
-                  <th className="px-4 py-3">Lump sum</th>
+                  <th className="px-4 py-3 text-right">Lump sum</th>
                   <th className="px-4 py-3">Source</th>
                   <th className="px-4 py-3">Subcontractor lines</th>
                   <th className="px-4 py-3"> </th>
@@ -412,7 +437,9 @@ export function InvoiceRecordPanel({
                   linkedBatches.map((b) => (
                     <tr key={b.id} className="border-b border-slate-100 align-top">
                       <td className="px-4 py-2">{formatDate(b.paidToContractorDate)}</td>
-                      <td className="px-4 py-2">{formatMoney(b.lumpSumAmount, b.currency)}</td>
+                      <td className="px-4 py-2 text-right">
+                        <MoneyAmount amount={b.lumpSumAmount} currency={b.currency} />
+                      </td>
                       <td className="px-4 py-2 capitalize">{b.paymentSourceKind}</td>
                       <td className="px-4 py-2 text-slate-700">
                         {(b.lines?.length ?? 0) === 0 ? (
@@ -426,7 +453,7 @@ export function InvoiceRecordPanel({
                                   <span className="text-slate-500"> · #{ln.invoiceNumber}</span>
                                 ) : null}
                                 {' — '}
-                                {formatMoney(ln.paidAmount, b.currency)}
+                                <MoneyAmount amount={ln.paidAmount} currency={b.currency} className="inline" />
                               </li>
                             ))}
                           </ul>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as api from '../api/dataApi'
 import type { Account, GlAccount, Invoice, Payment, VendorAdvance } from '../types'
 import { isBackendAuthEnabled } from '../config'
@@ -25,6 +25,27 @@ function newLineKey() {
 
 function newDisburseKey() {
   return `dl-${Math.random().toString(36).slice(2, 10)}`
+}
+
+/** Oldest advances first; allocates up to `target` across remaining balances. */
+function greedyAdvanceLines(advances: VendorAdvance[], target: number): AdvanceLine[] {
+  if (target <= 0.005) return []
+  const sorted = [...advances]
+    .filter((a) => (a.remainingBalance ?? 0) > 0.005)
+    .sort((a, b) => a.paidDate.localeCompare(b.paidDate))
+  const lines: AdvanceLine[] = []
+  let left = target
+  for (const a of sorted) {
+    if (left <= 0.005) break
+    const rem = a.remainingBalance ?? 0
+    const take = Math.min(left, rem)
+    if (take > 0.005) {
+      const rounded = Math.round(take * 100) / 100
+      lines.push({ key: newLineKey(), advanceId: a.id, amountStr: String(rounded) })
+      left -= rounded
+    }
+  }
+  return lines
 }
 
 /** Single funding source for disbursement batch metadata when payment GL already posted. */
@@ -90,6 +111,7 @@ export function PaymentRecordPanel({
   const [saving, setSaving] = useState(false)
   const [includeDisbursement, setIncludeDisbursement] = useState(false)
   const [disburseLines, setDisburseLines] = useState<DisburseLine[]>([])
+  const lastInvoiceIdForAdvances = useRef<string | null>(null)
 
   const selectedInvoice = useMemo(
     () => invoices.find((i) => i.id === invoiceId) ?? null,
@@ -108,6 +130,11 @@ export function PaymentRecordPanel({
     if (!selectedInvoice) return []
     return vendorAdvances.filter((a) => a.vendorId === selectedInvoice.vendorId)
   }, [vendorAdvances, selectedInvoice])
+
+  const advancePoolCapacity = useMemo(
+    () => advancesForVendor.reduce((s, a) => s + (a.remainingBalance ?? 0), 0),
+    [advancesForVendor],
+  )
 
   const fundingParsed = useMemo(() => {
     const fa = parseFloat(fromAccountAmt) || 0
@@ -162,6 +189,18 @@ export function PaymentRecordPanel({
       ignore = true
     }
   }, [projectId])
+
+  useEffect(() => {
+    if (editing) {
+      lastInvoiceIdForAdvances.current = invoiceId || null
+      return
+    }
+    const prev = lastInvoiceIdForAdvances.current
+    if (prev !== null && prev !== invoiceId) {
+      setAdvanceLines([])
+    }
+    lastInvoiceIdForAdvances.current = invoiceId || null
+  }, [invoiceId, editing])
 
   useEffect(() => {
     if (initialPayment) {
@@ -256,9 +295,13 @@ export function PaymentRecordPanel({
         {editing ? 'Edit payment' : 'Record payment'}
       </h2>
       <p className="mt-1 text-sm text-slate-600">
-        Total must equal the sum of advances, bank, cash, and other. Bank portion requires an operating account.
+        The payment total must equal vendor <span className="font-medium">advances</span> (prepaid pool),{' '}
+        <span className="font-medium">bank</span>, <span className="font-medium">cash</span>, and{' '}
+        <span className="font-medium">other</span> combined. Each non-zero slice posts its own GL credit (prepaid
+        asset and/or payment clearing); the debit is one line to accounts payable or expense, matching the invoice
+        setup. Bank requires an operating account.
         {pageLayout
-          ? ' Optional: record how this payment breaks down to subcontractors (stored with the invoice; no extra GL).'
+          ? ' Optional: subcontractor lines record breakdown only (no extra GL when GL is on this payment).'
           : ''}
       </p>
 
@@ -420,20 +463,6 @@ export function PaymentRecordPanel({
           </div>
         ) : null}
 
-        {advancesForVendor.length > 0 ? (
-          <div className="sm:col-span-2 rounded-lg border border-teal-100 bg-teal-50/50 px-3 py-2 text-sm text-slate-800">
-            <p className="text-xs font-medium uppercase text-teal-900">Vendor advance pool</p>
-            <ul className="mt-1 list-inside list-disc text-slate-700">
-              {advancesForVendor.map((a) => (
-                <li key={a.id}>
-                  {formatMoney(a.remainingBalance ?? 0, a.currency)} remaining on advance paid{' '}
-                  {a.paidDate.slice(0, 10)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
         <label className="block">
           <span className="text-xs font-medium text-slate-600">Payment total</span>
           <input
@@ -459,6 +488,166 @@ export function PaymentRecordPanel({
         ) : (
           <div />
         )}
+
+        {advancesForVendor.length > 0 ? (
+          <div className="sm:col-span-2 rounded-lg border border-teal-100 bg-teal-50/50 px-3 py-3 text-sm text-slate-800">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-[12rem] flex-1">
+                <p className="text-xs font-medium uppercase text-teal-900">Vendor advance pool</p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Pull from prepaid balances (reduces the advance asset in GL). Mix with bank/cash/other below; each
+                  slice is a separate credit against one debit to AP or expense.
+                </p>
+                <p className="mt-2 text-xs font-medium text-slate-700">
+                  Available in pool:{' '}
+                  {formatMoney(advancePoolCapacity, selectedInvoice?.currency ?? 'INR')}
+                </p>
+                <ul className="mt-1 list-inside list-disc text-slate-700">
+                  {advancesForVendor.map((a) => (
+                    <li key={a.id}>
+                      {formatMoney(a.remainingBalance ?? 0, a.currency)} remaining — paid {a.paidDate.slice(0, 10)}
+                    </li>
+                  ))}
+                </ul>
+                {payAmountNum > advancePoolCapacity + 0.02 &&
+                fundingParsed.fa < 0.01 &&
+                fundingParsed.fc < 0.01 &&
+                fundingParsed.fo < 0.01 ? (
+                  <p className="mt-2 text-xs text-amber-800">
+                    Prepaid pool ({formatMoney(advancePoolCapacity, selectedInvoice?.currency ?? 'INR')}) cannot cover
+                    the full payment. Add bank, cash, or other, or reduce the payment total.
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex flex-shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={saving || payAmountNum <= 0}
+                  className="rounded-lg border border-teal-300 bg-white px-2.5 py-1.5 text-xs font-medium text-teal-900 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => {
+                    onError(null)
+                    if (payAmountNum <= 0) {
+                      onError('Enter the payment total first.')
+                      return
+                    }
+                    setFromAccountAmt('')
+                    setFromCashAmt('')
+                    setFromOtherAmt('')
+                    setSourceAccountId('')
+                    setAdvanceLines(greedyAdvanceLines(advancesForVendor, payAmountNum))
+                  }}
+                >
+                  Pay entirely from advances
+                </button>
+                <button
+                  type="button"
+                  disabled={saving || payAmountNum <= 0 || advancesForVendor.length === 0}
+                  className="rounded-lg border border-teal-300 bg-white px-2.5 py-1.5 text-xs font-medium text-teal-900 hover:bg-teal-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => {
+                    onError(null)
+                    if (payAmountNum <= 0) {
+                      onError('Enter the payment total first.')
+                      return
+                    }
+                    const fa = parseFloat(fromAccountAmt) || 0
+                    const fc = parseFloat(fromCashAmt) || 0
+                    const fo = parseFloat(fromOtherAmt) || 0
+                    const gap = payAmountNum - fa - fc - fo
+                    if (gap <= 0.02) {
+                      setAdvanceLines([])
+                      return
+                    }
+                    setAdvanceLines(greedyAdvanceLines(advancesForVendor, gap))
+                  }}
+                >
+                  Cover remainder with advances
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  onClick={() => {
+                    onError(null)
+                    setAdvanceLines([])
+                  }}
+                >
+                  Clear advance lines
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : selectedInvoice ? (
+          <div className="sm:col-span-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            No vendor advance pool for this supplier — fund this payment from bank, cash, and/or other only.
+          </div>
+        ) : null}
+
+        <div className="sm:col-span-2 space-y-2 border-t border-slate-100 pt-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-medium text-slate-900">Draw from vendor advances</h3>
+              <p className="text-xs text-slate-500">Optional lines; amounts count toward the payment total above.</p>
+            </div>
+            <button
+              type="button"
+              disabled={saving || advancesForVendor.length === 0}
+              className="text-xs font-medium text-teal-700 hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() =>
+                setAdvanceLines((rows) => [...rows, { key: newLineKey(), advanceId: '', amountStr: '' }])
+              }
+            >
+              + Add advance line
+            </button>
+          </div>
+          {advanceLines.length === 0 ? (
+            <p className="text-xs text-slate-500">No advance applied — use quick actions above or add a line.</p>
+          ) : (
+            <div className="space-y-2">
+              {advanceLines.map((line, idx) => (
+                <div key={line.key} className="flex flex-wrap items-end gap-2">
+                  <select
+                    className="min-w-[200px] flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                    value={line.advanceId}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setAdvanceLines((rows) =>
+                        rows.map((r, i) => (i === idx ? { ...r, advanceId: v } : r)),
+                      )
+                    }}
+                  >
+                    <option value="">Select advance</option>
+                    {advancesForVendor.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {formatMoney(a.remainingBalance ?? 0, a.currency)} left — {a.paidDate.slice(0, 10)}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="Amount"
+                    className="w-28 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                    value={line.amountStr}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setAdvanceLines((rows) =>
+                        rows.map((r, i) => (i === idx ? { ...r, amountStr: v } : r)),
+                      )
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="text-xs text-red-600 hover:underline"
+                    onClick={() => setAdvanceLines((rows) => rows.filter((_, i) => i !== idx))}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <label className="block">
           <span className="text-xs font-medium text-slate-600">Paid on</span>
@@ -543,69 +732,6 @@ export function PaymentRecordPanel({
           />
         </label>
 
-        <div className="sm:col-span-2 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-600">From vendor advances</span>
-            <button
-              type="button"
-              className="text-xs font-medium text-teal-700 hover:underline"
-              onClick={() =>
-                setAdvanceLines((rows) => [...rows, { key: newLineKey(), advanceId: '', amountStr: '' }])
-              }
-            >
-              + Add advance line
-            </button>
-          </div>
-          {advanceLines.length === 0 ? (
-            <p className="text-xs text-slate-500">No advance applied to this payment.</p>
-          ) : (
-            <div className="space-y-2">
-              {advanceLines.map((line, idx) => (
-                <div key={line.key} className="flex flex-wrap items-end gap-2">
-                  <select
-                    className="min-w-[200px] flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
-                    value={line.advanceId}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      setAdvanceLines((rows) =>
-                        rows.map((r, i) => (i === idx ? { ...r, advanceId: v } : r)),
-                      )
-                    }}
-                  >
-                    <option value="">Select advance</option>
-                    {advancesForVendor.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {formatMoney(a.remainingBalance ?? 0, a.currency)} left — {a.paidDate.slice(0, 10)}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    placeholder="Amount"
-                    className="w-28 rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
-                    value={line.amountStr}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      setAdvanceLines((rows) =>
-                        rows.map((r, i) => (i === idx ? { ...r, amountStr: v } : r)),
-                      )
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="text-xs text-red-600 hover:underline"
-                    onClick={() => setAdvanceLines((rows) => rows.filter((_, i) => i !== idx))}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
         <div
           className={`sm:col-span-2 rounded-lg px-3 py-2 text-sm ${
             fundingOk ? 'border border-emerald-200 bg-emerald-50 text-emerald-900' : 'border border-red-200 bg-red-50 text-red-900'
@@ -613,6 +739,16 @@ export function PaymentRecordPanel({
         >
           Funding sum: {fundingParsed.total.toFixed(2)} · Payment total: {payAmountNum.toFixed(2)}
           {!fundingOk ? ' — must match' : ' — OK'}
+          {fundingOk && payAmountNum > 0 ? (
+            <p className="mt-1.5 text-xs font-normal opacity-90">
+              GL: one debit (accounts payable or expense per invoice); one credit per funding slice — each advance
+              credits its prepaid asset account; bank/cash/other credit the matching clearing accounts.
+            </p>
+          ) : !fundingOk && payAmountNum > 0 ? (
+            <p className="mt-1.5 text-xs font-normal opacity-90">
+              Every part of the payment must be assigned: prepaid lines plus bank, cash, and/or other.
+            </p>
+          ) : null}
         </div>
 
         <label className="block sm:col-span-2">

@@ -92,3 +92,29 @@ export function formatMoneyInrShorthand(amount: number, currency: string): strin
     return `${sign}₹${amount}`
   }
 }
+
+const COMPACT_NON_INR_THRESHOLD = 1000
+
+/**
+ * Shorter display for dense tables: INR uses lakhs/crores when large; other currencies use compact notation when ≥ threshold.
+ */
+export function formatMoneyDisplayShort(amount: number, currency = 'INR'): string {
+  const c = currency.trim().toUpperCase()
+  if (c === 'INR') {
+    return formatMoneyInrShorthand(amount, currency)
+  }
+  if (Math.abs(amount) < COMPACT_NON_INR_THRESHOLD) {
+    return formatMoney(amount, currency)
+  }
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: c,
+      notation: 'compact',
+      compactDisplay: 'short',
+      maximumFractionDigits: 2,
+    }).format(amount)
+  } catch {
+    return formatMoney(amount, currency)
+  }
+}

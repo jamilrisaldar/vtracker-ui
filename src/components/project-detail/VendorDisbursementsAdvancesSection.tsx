@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import * as api from '../../api/dataApi'
 import type { Vendor, VendorAdvance } from '../../types'
-import { formatDate, formatMoney } from '../../utils/format'
+import { formatDate } from '../../utils/format'
+import { MoneyAmount } from '../MoneyAmount'
 import { VendorAdvanceRecordPanel } from '../VendorAdvanceRecordPanel'
 
 const iconBtnClass =
@@ -102,19 +103,22 @@ export function VendorDisbursementsAdvancesSection({
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
-              <th className="min-w-[5rem] px-2 py-3">Actions</th>
+              <th className="min-w-[2.75rem] px-2 py-3">Actions</th>
               <th className="px-4 py-3">Paid</th>
               {!vendorId ? <th className="px-4 py-3">Vendor</th> : null}
-              <th className="px-4 py-3">Advance</th>
-              <th className="px-4 py-3">Remaining</th>
+              <th className="px-4 py-3 text-right">Advance</th>
+              <th className="px-4 py-3 text-right">Remaining</th>
               <th className="px-4 py-3">Source</th>
+              <th className="w-11 min-w-[2.75rem] px-2 py-3">
+                <span className="sr-only">Delete</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {advances.length === 0 ? (
               <tr>
                 <td
-                  colSpan={vendorId ? 5 : 6}
+                  colSpan={vendorId ? 6 : 7}
                   className="px-4 py-6 text-center text-slate-500"
                 >
                   No advances{vendorId ? ' for this vendor' : ''}. Use <span className="font-medium">Add advance</span>.
@@ -124,49 +128,55 @@ export function VendorDisbursementsAdvancesSection({
               advances.map((a) => (
                 <tr key={a.id} className="border-b border-slate-100">
                   <td className="whitespace-nowrap px-2 py-2">
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        title="Edit advance"
-                        aria-label="Edit advance"
-                        disabled={readOnly}
-                        className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
-                        onClick={() => setPanelAdvance(a)}
-                      >
-                        <PencilIcon />
-                      </button>
-                      <button
-                        type="button"
-                        title="Delete advance"
-                        aria-label="Delete advance"
-                        disabled={readOnly}
-                        className={`${iconBtnClass} text-red-600 hover:border-red-200 hover:bg-red-50`}
-                        onClick={() => {
-                          if (!confirm('Delete this advance? Usages must be removed first.')) return
-                          void (async () => {
-                            try {
-                              await api.deleteVendorAdvance(projectId, a.id)
-                              await reload()
-                              await onRefresh()
-                            } catch (err) {
-                              onError(err instanceof Error ? err.message : 'Delete failed.')
-                            }
-                          })()
-                        }}
-                      >
-                        <TrashIcon />
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      title="Edit advance"
+                      aria-label="Edit advance"
+                      disabled={readOnly}
+                      className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
+                      onClick={() => setPanelAdvance(a)}
+                    >
+                      <PencilIcon />
+                    </button>
                   </td>
                   <td className="px-4 py-2">{formatDate(a.paidDate)}</td>
                   {!vendorId ? (
                     <td className="px-4 py-2">{vendorName.get(a.vendorId) ?? a.vendorId}</td>
                   ) : null}
-                  <td className="px-4 py-2">{formatMoney(a.amount, a.currency)}</td>
-                  <td className="px-4 py-2">
-                    {a.remainingBalance != null ? formatMoney(a.remainingBalance, a.currency) : '—'}
+                  <td className="px-4 py-2 text-right">
+                    <MoneyAmount amount={a.amount} currency={a.currency} />
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    {a.remainingBalance != null ? (
+                      <MoneyAmount amount={a.remainingBalance} currency={a.currency} />
+                    ) : (
+                      '—'
+                    )}
                   </td>
                   <td className="px-4 py-2 capitalize text-slate-600">{a.paymentSourceKind}</td>
+                  <td className="whitespace-nowrap px-2 py-2">
+                    <button
+                      type="button"
+                      title="Delete advance"
+                      aria-label="Delete advance"
+                      disabled={readOnly}
+                      className={`${iconBtnClass} text-red-600 hover:border-red-200 hover:bg-red-50`}
+                      onClick={() => {
+                        if (!confirm('Delete this advance? Usages must be removed first.')) return
+                        void (async () => {
+                          try {
+                            await api.deleteVendorAdvance(projectId, a.id)
+                            await reload()
+                            await onRefresh()
+                          } catch (err) {
+                            onError(err instanceof Error ? err.message : 'Delete failed.')
+                          }
+                        })()
+                      }}
+                    >
+                      <TrashIcon />
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
