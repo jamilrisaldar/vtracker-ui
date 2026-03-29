@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import * as api from '../api/dataApi'
 import type { Account, GlAccount, Invoice, Payment, VendorAdvance } from '../types'
 import { formatMoney } from '../utils/format'
+import { invoiceGstAmount, invoiceTotalWithGst } from '../utils/invoiceTotals'
 
 const paymentMethodOptions = ['Cash', 'Cheque', 'RTGS', 'Other'] as const
 
@@ -66,7 +67,7 @@ export function PaymentRecordPanel({
     const paidOthers = payments
       .filter((p) => p.invoiceId === selectedInvoice.id && (!editing || p.id !== initialPayment?.id))
       .reduce((s, p) => s + p.amount, 0)
-    return selectedInvoice.amount - paidOthers
+    return invoiceTotalWithGst(selectedInvoice) - paidOthers
   }, [selectedInvoice, payments, editing, initialPayment])
 
   const advancesForVendor = useMemo(() => {
@@ -271,7 +272,8 @@ export function PaymentRecordPanel({
             {invoices.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.invoiceNumber} — {vendorName.get(i.vendorId) ?? 'Vendor'} —{' '}
-                {formatMoney(i.amount, i.currency)} ({i.status})
+                {formatMoney(i.amount, i.currency)} + GST {formatMoney(invoiceGstAmount(i), i.currency)} ={' '}
+                {formatMoney(invoiceTotalWithGst(i), i.currency)} ({i.status})
               </option>
             ))}
           </select>

@@ -36,6 +36,7 @@ import type {
 import { isBackendAuthEnabled } from '../config'
 import { enrichAccountFixedDeposit } from '../utils/fixedDepositMetrics'
 import { plotCalculatedSqFtFromDimensions } from '../utils/landPlotDisplay'
+import { invoiceTotalWithGst } from '../utils/invoiceTotals'
 import {
   clearAuthSession,
   id,
@@ -1510,11 +1511,13 @@ export async function createInvoice(input: {
   vendorId: string
   invoiceNumber: string
   amount: number
+  gstAmount?: number
   currency?: string
   issuedDate: string
   dueDate?: string
   status?: InvoiceStatus
   glAccountId?: string | null
+  memo?: string | null
 }): Promise<Invoice> {
   await delay()
   const project = await getProject(input.projectId)
@@ -1524,17 +1527,23 @@ export async function createInvoice(input: {
     (v) => v.id === input.vendorId && v.projectId === input.projectId,
   )
   if (!vendor) throw new Error('Vendor not found')
+  const gst = input.gstAmount ?? 0
+  const memoTrim =
+    input.memo != null && String(input.memo).trim() !== '' ? String(input.memo).trim() : undefined
   const inv: Invoice = {
     id: id('inv'),
     vendorId: input.vendorId,
     projectId: input.projectId,
     invoiceNumber: input.invoiceNumber.trim(),
     amount: input.amount,
+    gstAmount: gst,
+    totalWithGst: input.amount + gst,
     currency: input.currency ?? 'INR',
     issuedDate: input.issuedDate,
     dueDate: input.dueDate,
     status: input.status ?? 'sent',
     glAccountId: input.glAccountId ?? undefined,
+    memo: memoTrim,
   }
   db.invoices.push(inv)
   project.updatedAt = nowIso()
@@ -1565,6 +1574,7 @@ export async function updateInvoice(
   }
   if (patch.invoiceNumber != null) inv.invoiceNumber = patch.invoiceNumber.trim()
   if (patch.amount != null) inv.amount = patch.amount
+  if (patch.gstAmount !== undefined) inv.gstAmount = patch.gstAmount
   if (patch.currency != null) inv.currency = patch.currency
   if (patch.issuedDate != null) inv.issuedDate = patch.issuedDate
   if (patch.dueDate !== undefined) {
@@ -1572,6 +1582,14 @@ export async function updateInvoice(
   }
   if (patch.status != null) inv.status = patch.status
   if (patch.glAccountId !== undefined) inv.glAccountId = patch.glAccountId ?? undefined
+  if (patch.memo !== undefined) {
+    inv.memo =
+      patch.memo != null && String(patch.memo).trim() !== '' ? String(patch.memo).trim() : undefined
+  }
+  inv.totalWithGst = invoiceTotalWithGst(inv)
+  if (patch.amount != null || patch.gstAmount !== undefined) {
+    mockRecomputeInvoicePaymentStatus(db, inv.id)
+  }
   proj.updatedAt = nowIso()
   saveDb(db)
   return inv
@@ -1682,7 +1700,8 @@ export async function createPayment(input: {
   const paidTotal = db.payments
     .filter((p) => p.invoiceId === inv.id)
     .reduce((s, p) => s + p.amount, 0)
-  if (paidTotal >= inv.amount) inv.status = 'paid'
+  const due = invoiceTotalWithGst(inv)
+  if (paidTotal >= due) inv.status = 'paid'
   else if (paidTotal > 0) inv.status = 'partial'
   project.updatedAt = nowIso()
   saveDb(db)
@@ -1695,8 +1714,9 @@ function mockRecomputeInvoicePaymentStatus(db: MockDatabase, invoiceId: string) 
   const paidTotal = db.payments
     .filter((p) => p.invoiceId === inv.id)
     .reduce((s, p) => s + p.amount, 0)
+  const due = invoiceTotalWithGst(inv)
   if (paidTotal <= 0) inv.status = inv.status === 'draft' ? 'draft' : 'sent'
-  else if (paidTotal >= inv.amount) inv.status = 'paid'
+  else if (paidTotal >= due) inv.status = 'paid'
   else inv.status = 'partial'
 }
 
@@ -1786,8 +1806,9 @@ export async function deletePayment(paymentId: string, _projectId?: string): Pro
     const paidTotal = db.payments
       .filter((p) => p.invoiceId === inv.id)
       .reduce((s, p) => s + p.amount, 0)
+    const due = invoiceTotalWithGst(inv)
     if (paidTotal <= 0) inv.status = inv.status === 'draft' ? 'draft' : 'sent'
-    else if (paidTotal >= inv.amount) inv.status = 'paid'
+    else if (paidTotal >= due) inv.status = 'paid'
     else inv.status = 'partial'
   }
   db.documents = db.documents.filter((d) => d.paymentId !== paymentId)
@@ -2296,7 +2317,7 @@ export async function getProjectReport(projectId: string): Promise<ProjectReport
   const payments = db.payments.filter((p) => p.projectId === projectId)
   const vendors = db.vendors.filter((v) => v.projectId === projectId)
   const phases = db.phases.filter((p) => p.projectId === projectId)
-  const totalInvoiced = invoices.reduce((s, i) => s + i.amount, 0)
+  const totalInvoiced = invoices.reduce((s, i) => s + invoiceTotalWithGst(i), 0)
   const totalPaid = payments.reduce((s, p) => s + p.amount, 0)
   const byVendor = vendors.map((v) => {
     const inv = invoices.filter((i) => i.vendorId === v.id)
@@ -2304,7 +2325,7 @@ export async function getProjectReport(projectId: string): Promise<ProjectReport
     return {
       vendorId: v.id,
       vendorName: v.name,
-      invoiced: inv.reduce((s, i) => s + i.amount, 0),
+      invoiced: inv.reduce((s, i) => s + invoiceTotalWithGst(i), 0),
       paid: pay.reduce((s, p) => s + p.amount, 0),
     }
   })

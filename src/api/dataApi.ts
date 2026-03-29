@@ -440,11 +440,13 @@ export async function createInvoice(input: {
   vendorId: string
   invoiceNumber: string
   amount: number
+  gstAmount?: number
   currency?: string
   issuedDate: string
   dueDate?: string
   status?: InvoiceStatus
   glAccountId?: string | null
+  memo?: string | null
 }): Promise<Invoice> {
   if (isBackendAuthEnabled()) return backend.createInvoice(input)
   return mock.createInvoice(input)

@@ -29,10 +29,12 @@ export function InvoiceRecordPanel({
   const [vendorId, setVendorId] = useState('')
   const [invoiceNo, setInvoiceNo] = useState('')
   const [amount, setAmount] = useState('')
+  const [gstAmount, setGstAmount] = useState('')
   const [issuedDate, setIssuedDate] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [status, setStatus] = useState<InvoiceStatus>('sent')
   const [glAccountId, setGlAccountId] = useState('')
+  const [memo, setMemo] = useState('')
   const [glAccounts, setGlAccounts] = useState<GlAccount[]>([])
   const [saving, setSaving] = useState(false)
   const [linkedBatches, setLinkedBatches] = useState<VendorDisbursementBatch[]>([])
@@ -60,18 +62,22 @@ export function InvoiceRecordPanel({
       setVendorId(initialInvoice.vendorId)
       setInvoiceNo(initialInvoice.invoiceNumber)
       setAmount(String(initialInvoice.amount))
+      setGstAmount(String(initialInvoice.gstAmount ?? 0))
       setIssuedDate(initialInvoice.issuedDate.slice(0, 10))
       setDueDate(initialInvoice.dueDate?.slice(0, 10) ?? '')
       setStatus(initialInvoice.status)
       setGlAccountId(initialInvoice.glAccountId ?? '')
+      setMemo(initialInvoice.memo ?? '')
     } else {
       setVendorId(defaultVendorId ?? '')
       setInvoiceNo('')
       setAmount('')
+      setGstAmount('0')
       setIssuedDate('')
       setDueDate('')
       setStatus('sent')
       setGlAccountId('')
+      setMemo('')
     }
   }, [initialInvoice, defaultVendorId])
 
@@ -118,10 +124,20 @@ export function InvoiceRecordPanel({
         onSubmit={async (e) => {
           e.preventDefault()
           if (!vendorId || !invoiceNo.trim() || !amount || !issuedDate) return
+          const gstNum = gstAmount.trim() === '' ? 0 : Number(gstAmount)
+          if (Number.isNaN(gstNum) || gstNum < 0) {
+            onError('GST must be a non-negative number.')
+            return
+          }
+          if (memo.length > 65_000) {
+            onError('Memo must be at most 65,000 characters.')
+            return
+          }
           onError(null)
           setSaving(true)
           try {
             const glId = glAccountId.trim() ? glAccountId.trim() : undefined
+            const memoPayload = memo.trim() === '' ? null : memo.trim()
             if (editing && initialInvoice) {
               await api.updateInvoice(
                 initialInvoice.id,
@@ -129,10 +145,12 @@ export function InvoiceRecordPanel({
                   vendorId,
                   invoiceNumber: invoiceNo.trim(),
                   amount: Number(amount),
+                  gstAmount: gstNum,
                   issuedDate,
                   dueDate: dueDate.trim() ? dueDate : null,
                   status,
                   glAccountId: glId ?? null,
+                  memo: memoPayload,
                 },
                 projectId,
               )
@@ -142,9 +160,11 @@ export function InvoiceRecordPanel({
                 vendorId,
                 invoiceNumber: invoiceNo,
                 amount: Number(amount),
+                gstAmount: gstNum,
                 issuedDate,
                 dueDate: dueDate || undefined,
                 glAccountId: glId,
+                memo: memoPayload,
               })
             }
             await onRefresh()
@@ -182,7 +202,7 @@ export function InvoiceRecordPanel({
           />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-slate-600">Amount</span>
+          <span className="text-xs font-medium text-slate-600">Invoice amount (excl. GST)</span>
           <input
             required
             type="number"
@@ -191,6 +211,18 @@ export function InvoiceRecordPanel({
             className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-slate-600">GST charged</span>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            value={gstAmount}
+            onChange={(e) => setGstAmount(e.target.value)}
+            placeholder="0"
           />
         </label>
         <label className="block">
@@ -228,6 +260,17 @@ export function InvoiceRecordPanel({
             </select>
           </label>
         ) : null}
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-medium text-slate-600">Memo (optional)</span>
+          <textarea
+            rows={3}
+            maxLength={65_000}
+            className="mt-1 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            placeholder="Notes visible to your team on this invoice"
+          />
+        </label>
         <label className="block sm:col-span-2">
           <span className="text-xs font-medium text-slate-600">GL expense account (optional)</span>
           <select

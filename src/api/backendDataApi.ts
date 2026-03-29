@@ -802,11 +802,13 @@ export async function createInvoice(input: {
   vendorId: string
   invoiceNumber: string
   amount: number
+  gstAmount?: number
   currency?: string
   issuedDate: string
   dueDate?: string
   status?: InvoiceStatus
   glAccountId?: string | null
+  memo?: string | null
 }): Promise<Invoice> {
   return apiRequest<Invoice>(
     `/api/v1/projects/${encodeURIComponent(input.projectId)}/invoices`,
@@ -816,11 +818,13 @@ export async function createInvoice(input: {
         vendorId: input.vendorId,
         invoiceNumber: input.invoiceNumber.trim(),
         amount: input.amount,
+        gstAmount: input.gstAmount ?? 0,
         currency: input.currency ?? 'INR',
         issuedDate: input.issuedDate,
         dueDate: input.dueDate,
         status: input.status ?? 'sent',
         glAccountId: input.glAccountId ?? undefined,
+        ...(input.memo !== undefined ? { memo: input.memo } : {}),
       }),
     },
   )
@@ -835,11 +839,13 @@ export async function updateInvoice(
   if (patch.vendorId != null) body.vendorId = patch.vendorId
   if (patch.invoiceNumber != null) body.invoiceNumber = patch.invoiceNumber.trim()
   if (patch.amount != null) body.amount = patch.amount
+  if (patch.gstAmount != null) body.gstAmount = patch.gstAmount
   if (patch.currency != null) body.currency = patch.currency
   if (patch.issuedDate != null) body.issuedDate = patch.issuedDate
   if (patch.dueDate !== undefined) body.dueDate = patch.dueDate
   if (patch.status != null) body.status = patch.status
   if (patch.glAccountId !== undefined) body.glAccountId = patch.glAccountId
+  if (patch.memo !== undefined) body.memo = patch.memo
   return apiRequest<Invoice>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/invoices/${encodeURIComponent(invoiceId)}`,
     { method: 'PATCH', body: JSON.stringify(body) },

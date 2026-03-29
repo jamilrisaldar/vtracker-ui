@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import * as api from '../../api/dataApi'
 import type { Invoice, Payment, Vendor, VendorAdvance } from '../../types'
 import { formatDate, formatMoney } from '../../utils/format'
+import { invoiceGstAmount, invoiceTotalWithGst } from '../../utils/invoiceTotals'
 import { InvoiceRecordPanel } from '../InvoiceRecordPanel'
 import { PaymentRecordPanel } from '../PaymentRecordPanel'
 import { VendorAddPanel } from '../VendorAddPanel'
@@ -77,7 +78,9 @@ export function VendorsTab({
 
   const detailBalances = useMemo(() => {
     if (!detailVendorId) return null
-    const invoiced = invoices.filter((i) => i.vendorId === detailVendorId).reduce((s, i) => s + i.amount, 0)
+    const invoiced = invoices
+      .filter((i) => i.vendorId === detailVendorId)
+      .reduce((s, i) => s + invoiceTotalWithGst(i), 0)
     const paid = payments.filter((p) => p.vendorId === detailVendorId).reduce((s, p) => s + p.amount, 0)
     const advancePool = vendorAdvances
       .filter((a) => a.vendorId === detailVendorId)
@@ -155,61 +158,55 @@ export function VendorsTab({
       ) : null}
 
       {detailVendorId != null && detailVendor ? (
-        <>
-          <div
-            className="fixed inset-0 z-50 bg-slate-900/40"
-            aria-hidden
-            onClick={() => setDetailVendorId(null)}
-          />
-          <div className="fixed inset-y-0 right-0 z-[51] flex w-full max-w-4xl flex-col border-l border-slate-200 bg-white shadow-2xl">
-            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-6 py-4">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">{detailVendor.name}</h2>
-                <p className="mt-0.5 text-sm text-slate-600">{vendorKindLabel(detailVendor.vendorKind)}</p>
-                {detailBalances ? (
-                  <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-600">
-                    <div>
-                      <dt className="inline text-slate-500">Invoiced: </dt>
-                      <dd className="inline font-medium text-slate-800">
-                        {formatMoney(detailBalances.invoiced)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="inline text-slate-500">Paid: </dt>
-                      <dd className="inline font-medium text-slate-800">{formatMoney(detailBalances.paid)}</dd>
-                    </div>
-                    <div>
-                      <dt className="inline text-slate-500">A/P: </dt>
-                      <dd
-                        className={`inline font-medium ${
-                          detailBalances.apBalance > 0
-                            ? 'text-amber-800'
-                            : detailBalances.apBalance < 0
-                              ? 'text-teal-800'
-                              : 'text-slate-800'
-                        }`}
-                      >
-                        {formatMoney(detailBalances.apBalance)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="inline text-slate-500">Advance pool: </dt>
-                      <dd className="inline font-medium text-slate-800">
-                        {formatMoney(detailBalances.advancePool)}
-                      </dd>
-                    </div>
-                  </dl>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                onClick={() => setDetailVendorId(null)}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Close
-              </button>
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/80 px-6 py-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">{detailVendor.name}</h2>
+              <p className="mt-0.5 text-sm text-slate-600">{vendorKindLabel(detailVendor.vendorKind)}</p>
+              {detailBalances ? (
+                <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-600">
+                  <div>
+                    <dt className="inline text-slate-500">Invoiced: </dt>
+                    <dd className="inline font-medium text-slate-800">
+                      {formatMoney(detailBalances.invoiced)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="inline text-slate-500">Paid: </dt>
+                    <dd className="inline font-medium text-slate-800">{formatMoney(detailBalances.paid)}</dd>
+                  </div>
+                  <div>
+                    <dt className="inline text-slate-500">A/P: </dt>
+                    <dd
+                      className={`inline font-medium ${
+                        detailBalances.apBalance > 0
+                          ? 'text-amber-800'
+                          : detailBalances.apBalance < 0
+                            ? 'text-teal-800'
+                            : 'text-slate-800'
+                      }`}
+                    >
+                      {formatMoney(detailBalances.apBalance)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="inline text-slate-500">Advance pool: </dt>
+                    <dd className="inline font-medium text-slate-800">
+                      {formatMoney(detailBalances.advancePool)}
+                    </dd>
+                  </div>
+                </dl>
+              ) : null}
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 space-y-10">
+            <button
+              type="button"
+              onClick={() => setDetailVendorId(null)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            >
+              Back to vendors
+            </button>
+          </div>
+          <div className="px-6 py-6 space-y-10">
               <section>
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-base font-medium text-slate-900">Invoices</h3>
@@ -234,7 +231,9 @@ export function VendorsTab({
                       <tr>
                         <th className="w-11 min-w-[2.75rem] px-2 py-3">Actions</th>
                         <th className="px-4 py-3">#</th>
-                        <th className="px-4 py-3">Amount</th>
+                        <th className="px-4 py-3">Net</th>
+                        <th className="px-4 py-3">GST</th>
+                        <th className="px-4 py-3">Total</th>
                         <th className="px-4 py-3">Issued</th>
                         <th className="px-4 py-3">Status</th>
                         <th className="w-11 min-w-[2.75rem] px-2 py-3">
@@ -245,7 +244,7 @@ export function VendorsTab({
                     <tbody>
                       {displayInvoices.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                          <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
                             No invoices.
                           </td>
                         </tr>
@@ -271,6 +270,8 @@ export function VendorsTab({
                             </td>
                             <td className="px-4 py-3 font-mono text-xs">{i.invoiceNumber}</td>
                             <td className="px-4 py-3">{formatMoney(i.amount, i.currency)}</td>
+                            <td className="px-4 py-3">{formatMoney(invoiceGstAmount(i), i.currency)}</td>
+                            <td className="px-4 py-3 font-medium">{formatMoney(invoiceTotalWithGst(i), i.currency)}</td>
                             <td className="px-4 py-3 text-slate-600">{formatDate(i.issuedDate)}</td>
                             <td className="px-4 py-3 capitalize">{i.status.replace('_', ' ')}</td>
                             <td className="whitespace-nowrap px-2 py-3 align-middle">
@@ -430,10 +431,120 @@ export function VendorsTab({
                   />
                 </div>
               </section>
-            </div>
           </div>
-        </>
-      ) : null}
+        </div>
+      ) : (
+        <section>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-medium text-slate-900">Vendors</h2>
+              <p className="mt-1 max-w-2xl text-sm text-slate-600">
+                Use <span className="font-medium">Details</span> to open billing for a vendor (invoices, payments,
+                advances) in place of this list. Lump-sum contractor payouts are managed under each invoice.
+              </p>
+            </div>
+            {!readOnly ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingVendor(null)
+                  setEditingInvoice(null)
+                  setEditingPayment(null)
+                  setPanelMode('vendor')
+                }}
+                className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+              >
+                Add vendor
+              </button>
+            ) : null}
+          </div>
+          <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="min-w-[8rem] px-2 py-3">Actions</th>
+                  <th className="px-4 py-3">Vendor</th>
+                  <th className="px-4 py-3">Type</th>
+                  <th className="px-4 py-3">Contact</th>
+                  <th className="px-4 py-3">Email</th>
+                  <th className="w-11 min-w-[2.75rem] px-2 py-3">
+                    <span className="sr-only">Delete</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {vendors.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                      No vendors yet.
+                    </td>
+                  </tr>
+                ) : (
+                  vendors.map((v) => (
+                    <tr key={v.id} className="border-b border-slate-100">
+                      <td className="whitespace-nowrap px-2 py-3 align-middle">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            title="Edit vendor"
+                            aria-label="Edit vendor"
+                            disabled={actionsDisabled}
+                            className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
+                            onClick={() => {
+                              setEditingInvoice(null)
+                              setEditingPayment(null)
+                              setEditingVendor(v)
+                              setPanelMode('vendor')
+                            }}
+                          >
+                            <PencilIcon />
+                          </button>
+                          <button
+                            type="button"
+                            title="Vendor billing details"
+                            disabled={actionsDisabled}
+                            className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                            onClick={() => setDetailVendorId(v.id)}
+                          >
+                            Details
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-medium text-slate-900">{v.name}</td>
+                      <td className="px-4 py-3 text-slate-600">{vendorKindLabel(v.vendorKind)}</td>
+                      <td className="px-4 py-3 text-slate-600">{v.contactName ?? '—'}</td>
+                      <td className="px-4 py-3 text-slate-600">{v.email ?? '—'}</td>
+                      <td className="whitespace-nowrap px-2 py-3 align-middle">
+                        <button
+                          type="button"
+                          title="Delete vendor"
+                          aria-label="Delete vendor"
+                          disabled={actionsDisabled}
+                          className={`${iconBtnClass} text-red-600 hover:border-red-200 hover:bg-red-50`}
+                          onClick={() => {
+                            if (!confirm('Delete vendor and related invoice links?')) return
+                            void (async () => {
+                              try {
+                                await api.deleteVendor(v.id, projectId)
+                                if (detailVendorId === v.id) setDetailVendorId(null)
+                                await onRefresh()
+                              } catch (err) {
+                                onError(err instanceof Error ? err.message : 'Delete failed.')
+                              }
+                            })()
+                          }}
+                        >
+                          <TrashIcon />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {panelMode !== null && (
         <div className="fixed inset-0 z-[52] bg-slate-900/40" aria-hidden="true">
@@ -488,117 +599,6 @@ export function VendorsTab({
           </div>
         </div>
       )}
-
-      <section>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-medium text-slate-900">Vendors</h2>
-            <p className="mt-1 max-w-2xl text-sm text-slate-600">
-              Use <span className="font-medium">Details</span> to open invoices, payments, and advances for a vendor.
-              Lump-sum contractor payouts are managed under each invoice.
-            </p>
-          </div>
-          {!readOnly ? (
-            <button
-              type="button"
-              onClick={() => {
-                setEditingVendor(null)
-                setEditingInvoice(null)
-                setEditingPayment(null)
-                setPanelMode('vendor')
-              }}
-              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-            >
-              Add vendor
-            </button>
-          ) : null}
-        </div>
-        <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="min-w-[8rem] px-2 py-3">Actions</th>
-                <th className="px-4 py-3">Vendor</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Contact</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="w-11 min-w-[2.75rem] px-2 py-3">
-                  <span className="sr-only">Delete</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {vendors.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
-                    No vendors yet.
-                  </td>
-                </tr>
-              ) : (
-                vendors.map((v) => (
-                  <tr key={v.id} className="border-b border-slate-100">
-                    <td className="whitespace-nowrap px-2 py-3 align-middle">
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          title="Edit vendor"
-                          aria-label="Edit vendor"
-                          disabled={actionsDisabled}
-                          className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
-                          onClick={() => {
-                            setEditingInvoice(null)
-                            setEditingPayment(null)
-                            setEditingVendor(v)
-                            setPanelMode('vendor')
-                          }}
-                        >
-                          <PencilIcon />
-                        </button>
-                        <button
-                          type="button"
-                          title="Vendor billing details"
-                          disabled={actionsDisabled}
-                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-                          onClick={() => setDetailVendorId(v.id)}
-                        >
-                          Details
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 font-medium text-slate-900">{v.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{vendorKindLabel(v.vendorKind)}</td>
-                    <td className="px-4 py-3 text-slate-600">{v.contactName ?? '—'}</td>
-                    <td className="px-4 py-3 text-slate-600">{v.email ?? '—'}</td>
-                    <td className="whitespace-nowrap px-2 py-3 align-middle">
-                      <button
-                        type="button"
-                        title="Delete vendor"
-                        aria-label="Delete vendor"
-                        disabled={actionsDisabled}
-                        className={`${iconBtnClass} text-red-600 hover:border-red-200 hover:bg-red-50`}
-                        onClick={() => {
-                          if (!confirm('Delete vendor and related invoice links?')) return
-                          void (async () => {
-                            try {
-                              await api.deleteVendor(v.id, projectId)
-                              if (detailVendorId === v.id) setDetailVendorId(null)
-                              await onRefresh()
-                            } catch (err) {
-                              onError(err instanceof Error ? err.message : 'Delete failed.')
-                            }
-                          })()
-                        }}
-                      >
-                        <TrashIcon />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </div>
   )
 }

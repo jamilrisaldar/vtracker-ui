@@ -202,18 +202,25 @@ export interface Invoice {
   vendorId: string
   projectId: string
   invoiceNumber: string
+  /** Amount excluding GST. */
   amount: number
+  /** GST charged on the invoice (0 if none). */
+  gstAmount?: number
+  /** From API: amount + gstAmount (optional; derive with `invoiceTotalWithGst` if missing). */
+  totalWithGst?: number
   currency: string
   issuedDate: string
   dueDate?: string
   status: InvoiceStatus
   glAccountId?: string
+  /** User-entered notes (optional). */
+  memo?: string
 }
 
-/** PATCH body: `dueDate: null` clears the due date; `glAccountId: null` clears GL on the server. */
+/** PATCH body: `dueDate: null` clears the due date; `glAccountId: null` clears GL; `memo: null` clears memo. */
 export type InvoiceUpdatePatch = Partial<
-  Pick<Invoice, 'vendorId' | 'invoiceNumber' | 'amount' | 'currency' | 'issuedDate' | 'status'>
-> & { dueDate?: string | null; glAccountId?: string | null }
+  Pick<Invoice, 'vendorId' | 'invoiceNumber' | 'amount' | 'gstAmount' | 'currency' | 'issuedDate' | 'status'>
+> & { dueDate?: string | null; glAccountId?: string | null; memo?: string | null }
 
 export type PaymentSourceKind = 'account' | 'cash' | 'other'
 /** Invoice payments may combine funding sources (stored as `mixed` when more than one). */
