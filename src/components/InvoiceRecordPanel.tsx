@@ -43,6 +43,7 @@ export function InvoiceRecordPanel({
   const [invoiceNo, setInvoiceNo] = useState('')
   const [amount, setAmount] = useState('')
   const [gstAmount, setGstAmount] = useState('')
+  const [stateGstAmount, setStateGstAmount] = useState('')
   const [issuedDate, setIssuedDate] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [status, setStatus] = useState<InvoiceStatus>('sent')
@@ -77,6 +78,7 @@ export function InvoiceRecordPanel({
       setInvoiceNo(initialInvoice.invoiceNumber)
       setAmount(String(initialInvoice.amount))
       setGstAmount(String(initialInvoice.gstAmount ?? 0))
+      setStateGstAmount(String(initialInvoice.stateGstAmount ?? 0))
       setIssuedDate(initialInvoice.issuedDate.slice(0, 10))
       setDueDate(initialInvoice.dueDate?.slice(0, 10) ?? '')
       setStatus(initialInvoice.status)
@@ -89,6 +91,7 @@ export function InvoiceRecordPanel({
       setInvoiceNo(suggestedCopyInvoiceNumber(src.invoiceNumber))
       setAmount(String(src.amount))
       setGstAmount(String(src.gstAmount ?? 0))
+      setStateGstAmount(String(src.stateGstAmount ?? 0))
       setIssuedDate(src.issuedDate.slice(0, 10))
       setDueDate(src.dueDate?.slice(0, 10) ?? '')
       setStatus(src.status === 'draft' ? 'draft' : 'sent')
@@ -100,6 +103,7 @@ export function InvoiceRecordPanel({
       setInvoiceNo('')
       setAmount('')
       setGstAmount('0')
+      setStateGstAmount('0')
       setIssuedDate('')
       setDueDate('')
       setStatus('sent')
@@ -154,7 +158,12 @@ export function InvoiceRecordPanel({
           if (!vendorId || !invoiceNo.trim() || !amount || !issuedDate) return
           const gstNum = gstAmount.trim() === '' ? 0 : Number(gstAmount)
           if (Number.isNaN(gstNum) || gstNum < 0) {
-            onError('GST must be a non-negative number.')
+            onError('Central GST must be a non-negative number.')
+            return
+          }
+          const stateGstNum = stateGstAmount.trim() === '' ? 0 : Number(stateGstAmount)
+          if (Number.isNaN(stateGstNum) || stateGstNum < 0) {
+            onError('State GST must be a non-negative number.')
             return
           }
           if (memo.length > 65_000) {
@@ -175,6 +184,7 @@ export function InvoiceRecordPanel({
                   invoiceNumber: invoiceNo.trim(),
                   amount: Number(amount),
                   gstAmount: gstNum,
+                  stateGstAmount: stateGstNum,
                   issuedDate,
                   dueDate: dueDate.trim() ? dueDate : null,
                   status,
@@ -191,6 +201,7 @@ export function InvoiceRecordPanel({
                 invoiceNumber: invoiceNo.trim(),
                 amount: Number(amount),
                 gstAmount: gstNum,
+                stateGstAmount: stateGstNum,
                 issuedDate,
                 dueDate: dueDate || undefined,
                 glAccountId: glId,
@@ -245,7 +256,7 @@ export function InvoiceRecordPanel({
           />
         </label>
         <label className="block">
-          <span className="text-xs font-medium text-slate-600">GST charged</span>
+          <span className="text-xs font-medium text-slate-600">Central GST</span>
           <input
             type="number"
             min={0}
@@ -256,6 +267,22 @@ export function InvoiceRecordPanel({
             placeholder="0"
           />
         </label>
+        <label className="block">
+          <span className="text-xs font-medium text-slate-600">State GST</span>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            value={stateGstAmount}
+            onChange={(e) => setStateGstAmount(e.target.value)}
+            placeholder="0"
+          />
+        </label>
+        <p className="sm:col-span-2 text-xs text-slate-500">
+          GST input tax GL accounts are configured on the vendor (Edit vendor). They apply to every invoice for that
+          vendor.
+        </p>
         <label className="block">
           <span className="text-xs font-medium text-slate-600">Issued</span>
           <input

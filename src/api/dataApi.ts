@@ -395,6 +395,8 @@ export async function createVendor(input: {
   email?: string
   phone?: string
   notes?: string
+  gstCentralGlAccountId?: string | null
+  gstStateGlAccountId?: string | null
 }): Promise<Vendor> {
   if (isBackendAuthEnabled()) return backend.createVendor(input)
   return mock.createVendor(input)
@@ -403,7 +405,17 @@ export async function createVendor(input: {
 export async function updateVendor(
   vendorId: string,
   patch: Partial<
-    Pick<Vendor, 'name' | 'vendorKind' | 'contactName' | 'email' | 'phone' | 'notes'>
+    Pick<
+      Vendor,
+      | 'name'
+      | 'vendorKind'
+      | 'contactName'
+      | 'email'
+      | 'phone'
+      | 'notes'
+      | 'gstCentralGlAccountId'
+      | 'gstStateGlAccountId'
+    >
   >,
   projectId?: string,
 ): Promise<Vendor> {
@@ -441,6 +453,7 @@ export async function createInvoice(input: {
   invoiceNumber: string
   amount: number
   gstAmount?: number
+  stateGstAmount?: number
   currency?: string
   issuedDate: string
   dueDate?: string

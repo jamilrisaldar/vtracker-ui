@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import * as api from '../api/dataApi'
-import type { Vendor, VendorKind } from '../types'
+import type { GlAccount, Vendor, VendorKind } from '../types'
 
 const VENDOR_KIND_OPTIONS: { value: VendorKind; label: string }[] = [
   { value: 'company', label: 'Company' },
@@ -29,23 +29,47 @@ export function VendorAddPanel({
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [vendorKind, setVendorKind] = useState<VendorKind>('company')
+  const [gstCentralGlAccountId, setGstCentralGlAccountId] = useState('')
+  const [gstStateGlAccountId, setGstStateGlAccountId] = useState('')
+  const [glAccounts, setGlAccounts] = useState<GlAccount[]>([])
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
+    let ignore = false
+    void (async () => {
+      try {
+        const list = await api.listGlAccounts()
+        if (!ignore) setGlAccounts(list.filter((a) => a.isActive !== false))
+      } catch {
+        if (!ignore) setGlAccounts([])
+      }
+    })()
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  useEffect(() => {
+    const id7020 = glAccounts.find((a) => a.code === '7020')?.id ?? ''
+    const id7030 = glAccounts.find((a) => a.code === '7030')?.id ?? ''
     if (initialVendor) {
       setName(initialVendor.name)
       setContact(initialVendor.contactName ?? '')
       setEmail(initialVendor.email ?? '')
       setPhone(initialVendor.phone ?? '')
       setVendorKind(initialVendor.vendorKind ?? 'company')
+      setGstCentralGlAccountId(initialVendor.gstCentralGlAccountId ?? id7020)
+      setGstStateGlAccountId(initialVendor.gstStateGlAccountId ?? id7030)
     } else {
       setName('')
       setContact('')
       setEmail('')
       setPhone('')
       setVendorKind('company')
+      setGstCentralGlAccountId(id7020)
+      setGstStateGlAccountId(id7030)
     }
-  }, [initialVendor])
+  }, [initialVendor, glAccounts])
 
   return (
     <div
@@ -67,6 +91,8 @@ export function VendorAddPanel({
           onError(null)
           setSaving(true)
           try {
+            const gcGl = gstCentralGlAccountId.trim() ? gstCentralGlAccountId.trim() : null
+            const gsGl = gstStateGlAccountId.trim() ? gstStateGlAccountId.trim() : null
             if (editing && initialVendor) {
               await api.updateVendor(
                 initialVendor.id,
@@ -76,6 +102,8 @@ export function VendorAddPanel({
                   contactName: contact.trim() || undefined,
                   email: email.trim() || undefined,
                   phone: phone.trim() || undefined,
+                  gstCentralGlAccountId: gcGl,
+                  gstStateGlAccountId: gsGl,
                 },
                 projectId,
               )
@@ -87,6 +115,8 @@ export function VendorAddPanel({
                 contactName: contact || undefined,
                 email: email || undefined,
                 phone: phone || undefined,
+                gstCentralGlAccountId: gcGl ?? undefined,
+                gstStateGlAccountId: gsGl ?? undefined,
               })
             }
             await onRefresh()
@@ -146,6 +176,48 @@ export function VendorAddPanel({
             onChange={(e) => setPhone(e.target.value)}
           />
         </label>
+
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-medium text-slate-600">
+            Central GST GL (invoice accrual input tax; default 7020)
+          </span>
+          <select
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            value={gstCentralGlAccountId}
+            onChange={(e) => setGstCentralGlAccountId(e.target.value)}
+          >
+            <option value="">— Chart default (7020) —</option>
+            {glAccounts
+              .filter((a) => a.categoryCode === 'TAXES')
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.code} — {a.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-medium text-slate-600">
+            State GST GL (invoice accrual input tax; default 7030)
+          </span>
+          <select
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            value={gstStateGlAccountId}
+            onChange={(e) => setGstStateGlAccountId(e.target.value)}
+          >
+            <option value="">— Chart default (7030) —</option>
+            {glAccounts
+              .filter((a) => a.categoryCode === 'TAXES')
+              .map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.code} — {a.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <p className="sm:col-span-2 text-xs text-slate-500">
+          Used for all invoices for this vendor when Central GST and/or State GST amounts are entered.
+        </p>
 
         <div className="sm:col-span-2 mt-1 flex gap-2">
           <button

@@ -3,7 +3,11 @@ import * as api from '../api/dataApi'
 import type { Account, GlAccount, Invoice, Payment, VendorAdvance } from '../types'
 import { isBackendAuthEnabled } from '../config'
 import { formatMoney } from '../utils/format'
-import { invoiceGstAmount, invoiceTotalWithGst } from '../utils/invoiceTotals'
+import {
+  invoiceCentralGstAmount,
+  invoiceStateGstAmount,
+  invoiceTotalWithGst,
+} from '../utils/invoiceTotals'
 
 const paymentMethodOptions = ['Cash', 'Cheque', 'RTGS', 'Other'] as const
 
@@ -70,6 +74,8 @@ export function PaymentRecordPanel({
   vendorName,
   initialPayment = null,
   defaultVendorId,
+  /** When recording a new payment, pre-select this invoice (e.g. from vendor billing invoice row). */
+  defaultInvoiceId,
   onClose,
   onRefresh,
   onError,
@@ -84,6 +90,7 @@ export function PaymentRecordPanel({
   initialPayment?: Payment | null
   /** When recording a new payment from a vendor’s detail view, prefer that vendor’s invoices. */
   defaultVendorId?: string
+  defaultInvoiceId?: string
   onClose: () => void
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
@@ -271,12 +278,17 @@ export function PaymentRecordPanel({
   }, [initialPayment])
 
   useEffect(() => {
-    if (initialPayment || !defaultVendorId) return
+    if (initialPayment) return
+    if (defaultInvoiceId && invoices.some((inv) => inv.id === defaultInvoiceId)) {
+      setInvoiceId((cur) => (cur === '' ? defaultInvoiceId : cur))
+      return
+    }
+    if (!defaultVendorId) return
     const inv = invoices.find((i) => i.vendorId === defaultVendorId)
     if (inv) {
       setInvoiceId((cur) => (cur === '' ? inv.id : cur))
     }
-  }, [initialPayment, defaultVendorId, invoices])
+  }, [initialPayment, defaultInvoiceId, defaultVendorId, invoices])
 
   const pageLayout = layout === 'page'
 
@@ -443,8 +455,9 @@ export function PaymentRecordPanel({
             {invoices.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.invoiceNumber} — {vendorName.get(i.vendorId) ?? 'Vendor'} —{' '}
-                {formatMoney(i.amount, i.currency)} + GST {formatMoney(invoiceGstAmount(i), i.currency)} ={' '}
-                {formatMoney(invoiceTotalWithGst(i), i.currency)} ({i.status})
+                {formatMoney(i.amount, i.currency)} + CGST {formatMoney(invoiceCentralGstAmount(i), i.currency)} + SGST{' '}
+                {formatMoney(invoiceStateGstAmount(i), i.currency)} = {formatMoney(invoiceTotalWithGst(i), i.currency)} (
+                {i.status})
               </option>
             ))}
           </select>

@@ -739,6 +739,8 @@ export async function createVendor(input: {
   email?: string
   phone?: string
   notes?: string
+  gstCentralGlAccountId?: string | null
+  gstStateGlAccountId?: string | null
 }): Promise<Vendor> {
   return apiRequest<Vendor>(
     `/api/v1/projects/${encodeURIComponent(input.projectId)}/vendors`,
@@ -751,6 +753,8 @@ export async function createVendor(input: {
         email: input.email?.trim(),
         phone: input.phone?.trim(),
         notes: input.notes?.trim(),
+        gstCentralGlAccountId: input.gstCentralGlAccountId ?? undefined,
+        gstStateGlAccountId: input.gstStateGlAccountId ?? undefined,
       }),
     },
   )
@@ -759,7 +763,17 @@ export async function createVendor(input: {
 export async function updateVendor(
   vendorId: string,
   patch: Partial<
-    Pick<Vendor, 'name' | 'vendorKind' | 'contactName' | 'email' | 'phone' | 'notes'>
+    Pick<
+      Vendor,
+      | 'name'
+      | 'vendorKind'
+      | 'contactName'
+      | 'email'
+      | 'phone'
+      | 'notes'
+      | 'gstCentralGlAccountId'
+      | 'gstStateGlAccountId'
+    >
   >,
   projectId: string,
 ): Promise<Vendor> {
@@ -770,6 +784,8 @@ export async function updateVendor(
   if (patch.email !== undefined) body.email = patch.email?.trim()
   if (patch.phone !== undefined) body.phone = patch.phone?.trim()
   if (patch.notes !== undefined) body.notes = patch.notes?.trim()
+  if (patch.gstCentralGlAccountId !== undefined) body.gstCentralGlAccountId = patch.gstCentralGlAccountId
+  if (patch.gstStateGlAccountId !== undefined) body.gstStateGlAccountId = patch.gstStateGlAccountId
   return apiRequest<Vendor>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/vendors/${encodeURIComponent(vendorId)}`,
     { method: 'PATCH', body: JSON.stringify(body) },
@@ -803,6 +819,7 @@ export async function createInvoice(input: {
   invoiceNumber: string
   amount: number
   gstAmount?: number
+  stateGstAmount?: number
   currency?: string
   issuedDate: string
   dueDate?: string
@@ -820,6 +837,7 @@ export async function createInvoice(input: {
         invoiceNumber: input.invoiceNumber.trim(),
         amount: input.amount,
         gstAmount: input.gstAmount ?? 0,
+        stateGstAmount: input.stateGstAmount ?? 0,
         currency: input.currency ?? 'INR',
         issuedDate: input.issuedDate,
         dueDate: input.dueDate,
@@ -841,7 +859,8 @@ export async function updateInvoice(
   if (patch.vendorId != null) body.vendorId = patch.vendorId
   if (patch.invoiceNumber != null) body.invoiceNumber = patch.invoiceNumber.trim()
   if (patch.amount != null) body.amount = patch.amount
-  if (patch.gstAmount != null) body.gstAmount = patch.gstAmount
+  if (patch.gstAmount !== undefined) body.gstAmount = patch.gstAmount
+  if (patch.stateGstAmount !== undefined) body.stateGstAmount = patch.stateGstAmount
   if (patch.currency != null) body.currency = patch.currency
   if (patch.issuedDate != null) body.issuedDate = patch.issuedDate
   if (patch.dueDate !== undefined) body.dueDate = patch.dueDate

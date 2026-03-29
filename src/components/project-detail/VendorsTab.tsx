@@ -3,7 +3,11 @@ import * as api from '../../api/dataApi'
 import type { Invoice, Payment, Vendor, VendorAdvance } from '../../types'
 import { formatDate } from '../../utils/format'
 import { MoneyAmount } from '../MoneyAmount'
-import { invoiceGstAmount, invoiceTotalWithGst } from '../../utils/invoiceTotals'
+import {
+  invoiceCentralGstAmount,
+  invoiceStateGstAmount,
+  invoiceTotalWithGst,
+} from '../../utils/invoiceTotals'
 import { InvoiceRecordPanel } from '../InvoiceRecordPanel'
 import { PaymentRecordPanel } from '../PaymentRecordPanel'
 import { VendorAddPanel } from '../VendorAddPanel'
@@ -15,6 +19,15 @@ function vendorKindLabel(k: Vendor['vendorKind']): string {
   if (k === 'person') return 'Person'
   if (k === 'government') return 'Government'
   return 'Company'
+}
+
+/** Vendor invoice table: paid (green), partial (lighter green), outstanding sent/overdue (light orange), draft neutral. */
+function invoiceTableRowClass(status: Invoice['status']): string {
+  const base = 'border-b border-slate-200/80 transition-colors'
+  if (status === 'paid') return `${base} bg-emerald-100/90 hover:bg-emerald-100`
+  if (status === 'partial') return `${base} bg-emerald-50/95 hover:bg-emerald-50`
+  if (status === 'sent' || status === 'overdue') return `${base} bg-orange-50/95 hover:bg-orange-50/90`
+  return `${base} bg-white hover:bg-slate-50/90`
 }
 
 const iconBtnClass =
@@ -56,6 +69,18 @@ function CopyInvoiceIcon() {
   )
 }
 
+function RecordPaymentIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
+      />
+    </svg>
+  )
+}
+
 export function VendorsTab({
   projectId,
   vendors,
@@ -85,6 +110,8 @@ export function VendorsTab({
   const [vendorAdvances, setVendorAdvances] = useState<VendorAdvance[]>([])
   /** Prefill new-invoice drawer from an existing row (vendor detail: copy invoice). */
   const [invoiceCopyTemplate, setInvoiceCopyTemplate] = useState<Invoice | null>(null)
+  /** When opening Record payment from an invoice row, pre-select that invoice in the panel. */
+  const [paymentPrefillInvoiceId, setPaymentPrefillInvoiceId] = useState<string | null>(null)
 
   const [glModalOpen, setGlModalOpen] = useState(false)
   const [glModalTitle, setGlModalTitle] = useState('')
@@ -116,6 +143,7 @@ export function VendorsTab({
     setEditingVendor(null)
     setEditingInvoice(null)
     setEditingPayment(null)
+    setPaymentPrefillInvoiceId(null)
     setInvoiceCopyTemplate(null)
   }
 
@@ -251,36 +279,36 @@ export function VendorsTab({
               <h2 className="text-lg font-semibold text-slate-900">{detailVendor.name}</h2>
               <p className="mt-0.5 text-sm text-slate-600">{vendorKindLabel(detailVendor.vendorKind)}</p>
               {detailBalances ? (
-                <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-600">
+                <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-2 text-sm text-slate-600">
                   <div>
-                    <dt className="inline text-slate-500">Invoiced: </dt>
-                    <dd className="inline font-medium text-slate-800">
+                    <dt className="inline text-slate-600">Invoiced: </dt>
+                    <dd className="inline font-bold text-slate-900 tabular-nums">
                       <MoneyAmount amount={detailBalances.invoiced} />
                     </dd>
                   </div>
                   <div>
-                    <dt className="inline text-slate-500">Paid: </dt>
-                    <dd className="inline font-medium text-slate-800">
+                    <dt className="inline text-slate-600">Paid: </dt>
+                    <dd className="inline font-bold text-slate-900 tabular-nums">
                       <MoneyAmount amount={detailBalances.paid} />
                     </dd>
                   </div>
                   <div>
-                    <dt className="inline text-slate-500">A/P: </dt>
+                    <dt className="inline text-slate-600">A/P: </dt>
                     <dd
-                      className={`inline font-medium ${
+                      className={`inline font-bold tabular-nums ${
                         detailBalances.apBalance > 0
                           ? 'text-amber-800'
                           : detailBalances.apBalance < 0
                             ? 'text-teal-800'
-                            : 'text-slate-800'
+                            : 'text-slate-900'
                       }`}
                     >
                       <MoneyAmount amount={detailBalances.apBalance} />
                     </dd>
                   </div>
                   <div>
-                    <dt className="inline text-slate-500">Advance pool: </dt>
-                    <dd className="inline font-medium text-slate-800">
+                    <dt className="inline text-slate-600">Advance pool: </dt>
+                    <dd className="inline font-bold text-slate-900 tabular-nums">
                       <MoneyAmount amount={detailBalances.advancePool} />
                     </dd>
                   </div>
@@ -319,6 +347,7 @@ export function VendorsTab({
                   vendorName={vendorName}
                   initialPayment={editingPayment}
                   defaultVendorId={detailVendorId ?? undefined}
+                  defaultInvoiceId={paymentPrefillInvoiceId ?? undefined}
                   onClose={closePanel}
                   onRefresh={async () => {
                     await onRefresh()
@@ -358,10 +387,11 @@ export function VendorsTab({
                   <table className="min-w-full text-left text-sm">
                     <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
                       <tr>
-                        <th className="min-w-[5.25rem] px-2 py-3">Actions</th>
+                        <th className="min-w-[7rem] px-2 py-3">Actions</th>
                         <th className="px-4 py-3">#</th>
                         <th className="px-4 py-3 text-right">Net</th>
-                        <th className="px-4 py-3 text-right">GST</th>
+                        <th className="px-4 py-3 text-right">Central GST</th>
+                        <th className="px-4 py-3 text-right">State GST</th>
                         <th className="px-4 py-3 text-right">Total</th>
                         <th className="px-4 py-3">Issued</th>
                         <th className="px-4 py-3">Status</th>
@@ -373,13 +403,13 @@ export function VendorsTab({
                     <tbody>
                       {displayInvoices.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
+                          <td colSpan={9} className="px-4 py-6 text-center text-slate-500">
                             No invoices.
                           </td>
                         </tr>
                       ) : (
                         displayInvoices.map((i) => (
-                          <tr key={i.id} className="border-b border-slate-100">
+                          <tr key={i.id} className={invoiceTableRowClass(i.status)}>
                             <td className="whitespace-nowrap px-2 py-3 align-middle">
                               <div className="flex items-center gap-1">
                                 <button
@@ -399,6 +429,24 @@ export function VendorsTab({
                                   <PencilIcon />
                                 </button>
                                 <VendorBillingGlIconButton onClick={() => openInvoiceGlModal(i)} />
+                                {i.status !== 'paid' && !readOnly ? (
+                                  <button
+                                    type="button"
+                                    title="Record payment for this invoice"
+                                    aria-label="Record payment for this invoice"
+                                    className={`${iconBtnClass} text-teal-800 hover:border-teal-200 hover:bg-teal-50`}
+                                    onClick={() => {
+                                      setEditingVendor(null)
+                                      setEditingInvoice(null)
+                                      setEditingPayment(null)
+                                      setInvoiceCopyTemplate(null)
+                                      setPaymentPrefillInvoiceId(i.id)
+                                      setPanelMode('payment')
+                                    }}
+                                  >
+                                    <RecordPaymentIcon />
+                                  </button>
+                                ) : null}
                                 <button
                                   type="button"
                                   title="Copy to new invoice"
@@ -422,7 +470,10 @@ export function VendorsTab({
                               <MoneyAmount amount={i.amount} currency={i.currency} />
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <MoneyAmount amount={invoiceGstAmount(i)} currency={i.currency} />
+                              <MoneyAmount amount={invoiceCentralGstAmount(i)} currency={i.currency} />
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <MoneyAmount amount={invoiceStateGstAmount(i)} currency={i.currency} />
                             </td>
                             <td className="px-4 py-3 text-right font-medium">
                               <MoneyAmount amount={invoiceTotalWithGst(i)} currency={i.currency} />
@@ -472,6 +523,7 @@ export function VendorsTab({
                         setEditingInvoice(null)
                         setEditingPayment(null)
                         setInvoiceCopyTemplate(null)
+                        setPaymentPrefillInvoiceId(null)
                         setPanelMode('payment')
                       }}
                       className="rounded-lg bg-teal-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-900"
@@ -522,6 +574,7 @@ export function VendorsTab({
                                       setEditingVendor(null)
                                       setEditingInvoice(null)
                                       setInvoiceCopyTemplate(null)
+                                      setPaymentPrefillInvoiceId(null)
                                       setEditingPayment(p)
                                       setPanelMode('payment')
                                     }}
@@ -759,6 +812,7 @@ export function VendorsTab({
                 vendorName={vendorName}
                 initialPayment={editingPayment}
                 defaultVendorId={detailVendorId ?? undefined}
+                defaultInvoiceId={paymentPrefillInvoiceId ?? undefined}
                 onClose={closePanel}
                 onRefresh={async () => {
                   await onRefresh()

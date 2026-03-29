@@ -195,6 +195,10 @@ export interface Vendor {
   email?: string
   phone?: string
   notes?: string
+  /** Default Central GST input GL for this vendor’s invoices (chart 7020). */
+  gstCentralGlAccountId?: string
+  /** Default State GST input GL for this vendor’s invoices (chart 7030). */
+  gstStateGlAccountId?: string
 }
 
 export interface Invoice {
@@ -204,9 +208,11 @@ export interface Invoice {
   invoiceNumber: string
   /** Amount excluding GST. */
   amount: number
-  /** GST charged on the invoice (0 if none). */
+  /** Central GST (CGST); 0 if none. */
   gstAmount?: number
-  /** From API: amount + gstAmount (optional; derive with `invoiceTotalWithGst` if missing). */
+  /** State GST (SGST); 0 if none. */
+  stateGstAmount?: number
+  /** From API: amount + gst amounts (optional; derive with `invoiceTotalWithGst` if missing). */
   totalWithGst?: number
   currency: string
   issuedDate: string
@@ -221,7 +227,17 @@ export interface Invoice {
 
 /** PATCH body: `dueDate: null` clears the due date; `glAccountId: null` clears GL; `memo: null` clears memo. */
 export type InvoiceUpdatePatch = Partial<
-  Pick<Invoice, 'vendorId' | 'invoiceNumber' | 'amount' | 'gstAmount' | 'currency' | 'issuedDate' | 'status'>
+  Pick<
+    Invoice,
+    | 'vendorId'
+    | 'invoiceNumber'
+    | 'amount'
+    | 'gstAmount'
+    | 'stateGstAmount'
+    | 'currency'
+    | 'issuedDate'
+    | 'status'
+  >
 > & {
   dueDate?: string | null
   glAccountId?: string | null

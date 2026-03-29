@@ -1413,6 +1413,8 @@ export async function createVendor(input: {
   email?: string
   phone?: string
   notes?: string
+  gstCentralGlAccountId?: string | null
+  gstStateGlAccountId?: string | null
 }): Promise<Vendor> {
   await delay()
   const project = await getProject(input.projectId)
@@ -1431,6 +1433,8 @@ export async function createVendor(input: {
     email: input.email?.trim() || undefined,
     phone: input.phone?.trim() || undefined,
     notes: input.notes?.trim() || undefined,
+    gstCentralGlAccountId: input.gstCentralGlAccountId ?? undefined,
+    gstStateGlAccountId: input.gstStateGlAccountId ?? undefined,
   }
   db.vendors.push(v)
   project.updatedAt = nowIso()
@@ -1441,7 +1445,17 @@ export async function createVendor(input: {
 export async function updateVendor(
   vendorId: string,
   patch: Partial<
-    Pick<Vendor, 'name' | 'vendorKind' | 'contactName' | 'email' | 'phone' | 'notes'>
+    Pick<
+      Vendor,
+      | 'name'
+      | 'vendorKind'
+      | 'contactName'
+      | 'email'
+      | 'phone'
+      | 'notes'
+      | 'gstCentralGlAccountId'
+      | 'gstStateGlAccountId'
+    >
   >,
   _projectId?: string,
 ): Promise<Vendor> {
@@ -1461,6 +1475,10 @@ export async function updateVendor(
   if (patch.email !== undefined) v.email = patch.email?.trim() || undefined
   if (patch.phone !== undefined) v.phone = patch.phone?.trim() || undefined
   if (patch.notes !== undefined) v.notes = patch.notes?.trim() || undefined
+  if (patch.gstCentralGlAccountId !== undefined)
+    v.gstCentralGlAccountId = patch.gstCentralGlAccountId ?? undefined
+  if (patch.gstStateGlAccountId !== undefined)
+    v.gstStateGlAccountId = patch.gstStateGlAccountId ?? undefined
   proj.updatedAt = nowIso()
   saveDb(db)
   return normalizeVendor(v)
@@ -1512,6 +1530,7 @@ export async function createInvoice(input: {
   invoiceNumber: string
   amount: number
   gstAmount?: number
+  stateGstAmount?: number
   currency?: string
   issuedDate: string
   dueDate?: string
@@ -1529,6 +1548,7 @@ export async function createInvoice(input: {
   )
   if (!vendor) throw new Error('Vendor not found')
   const gst = input.gstAmount ?? 0
+  const sGst = input.stateGstAmount ?? 0
   const memoTrim =
     input.memo != null && String(input.memo).trim() !== '' ? String(input.memo).trim() : undefined
   const inv: Invoice = {
@@ -1538,7 +1558,8 @@ export async function createInvoice(input: {
     invoiceNumber: input.invoiceNumber.trim(),
     amount: input.amount,
     gstAmount: gst,
-    totalWithGst: input.amount + gst,
+    stateGstAmount: sGst,
+    totalWithGst: input.amount + gst + sGst,
     currency: input.currency ?? 'INR',
     issuedDate: input.issuedDate,
     dueDate: input.dueDate,
@@ -1577,6 +1598,7 @@ export async function updateInvoice(
   if (patch.invoiceNumber != null) inv.invoiceNumber = patch.invoiceNumber.trim()
   if (patch.amount != null) inv.amount = patch.amount
   if (patch.gstAmount !== undefined) inv.gstAmount = patch.gstAmount
+  if (patch.stateGstAmount !== undefined) inv.stateGstAmount = patch.stateGstAmount
   if (patch.currency != null) inv.currency = patch.currency
   if (patch.issuedDate != null) inv.issuedDate = patch.issuedDate
   if (patch.dueDate !== undefined) {
@@ -1590,7 +1612,7 @@ export async function updateInvoice(
       patch.memo != null && String(patch.memo).trim() !== '' ? String(patch.memo).trim() : undefined
   }
   inv.totalWithGst = invoiceTotalWithGst(inv)
-  if (patch.amount != null || patch.gstAmount !== undefined) {
+  if (patch.amount != null || patch.gstAmount !== undefined || patch.stateGstAmount !== undefined) {
     mockRecomputeInvoicePaymentStatus(db, inv.id)
   }
   proj.updatedAt = nowIso()
