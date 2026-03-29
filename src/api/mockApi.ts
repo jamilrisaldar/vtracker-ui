@@ -1726,7 +1726,8 @@ export async function createPayment(input: {
     .filter((p) => p.invoiceId === inv.id)
     .reduce((s, p) => s + p.amount, 0)
   const due = invoiceTotalWithGst(inv)
-  if (paidTotal >= due) inv.status = 'paid'
+  const eps = 0.02
+  if (paidTotal + eps >= due) inv.status = 'paid'
   else if (paidTotal > 0) inv.status = 'partial'
   project.updatedAt = nowIso()
   saveDb(db)
@@ -1740,8 +1741,9 @@ function mockRecomputeInvoicePaymentStatus(db: MockDatabase, invoiceId: string) 
     .filter((p) => p.invoiceId === inv.id)
     .reduce((s, p) => s + p.amount, 0)
   const due = invoiceTotalWithGst(inv)
-  if (paidTotal <= 0) inv.status = inv.status === 'draft' ? 'draft' : 'sent'
-  else if (paidTotal >= due) inv.status = 'paid'
+  const eps = 0.02
+  if (paidTotal <= eps) inv.status = inv.status === 'draft' ? 'draft' : 'sent'
+  else if (paidTotal + eps >= due) inv.status = 'paid'
   else inv.status = 'partial'
 }
 
