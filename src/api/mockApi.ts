@@ -2403,6 +2403,30 @@ const MOCK_GL_ACCOUNTS: GlAccount[] = [
   },
 ]
 
+/** Per-project GL lines in mock mode (manual journals only). */
+const MOCK_PROJECT_GL_ENTRIES = new Map<string, GeneralLedgerEntry[]>()
+
+function mockGlBucket(projectId: string): GeneralLedgerEntry[] {
+  let list = MOCK_PROJECT_GL_ENTRIES.get(projectId)
+  if (!list) {
+    list = []
+    MOCK_PROJECT_GL_ENTRIES.set(projectId, list)
+  }
+  return list
+}
+
+function mockSortGlEntries(rows: GeneralLedgerEntry[]): GeneralLedgerEntry[] {
+  return [...rows].sort((a, b) => {
+    const dc = b.entryDate.localeCompare(a.entryDate)
+    if (dc !== 0) return dc
+    const sc = (a.sourceId ?? '').localeCompare(b.sourceId ?? '')
+    if (sc !== 0) return sc
+    return (a.createdAt ?? '').localeCompare(b.createdAt ?? '')
+  })
+}
+
+const MOCK_GL_EPS = 0.01
+
 export async function listGlCategories(): Promise<GlCategory[]> {
   await delay()
   return MOCK_GL_CATEGORIES.slice()
@@ -2611,11 +2635,124 @@ export async function updateGlAccount(
 
 export async function listGeneralLedgerEntries(
   projectId: string,
-  _opts?: { startDate?: string; endDate?: string },
+  opts?: { startDate?: string; endDate?: string; sourceKind?: string; sourceId?: string },
 ): Promise<GeneralLedgerEntry[]> {
   await delay()
   if (!(await getProject(projectId))) throw new Error('Not found')
-  return []
+  const start = opts?.startDate?.slice(0, 10)
+  const end = opts?.endDate?.slice(0, 10)
+  const sk = opts?.sourceKind?.trim()
+  const sid = opts?.sourceId?.trim()
+  let rows = mockGlBucket(projectId).slice()
+  if (start) rows = rows.filter((r) => r.entryDate >= start)
+  if (end) rows = rows.filter((r) => r.entryDate <= end)
+  if (sk && sid) rows = rows.filter((r) => r.sourceKind === sk && r.sourceId === sid)
+  return mockSortGlEntries(rows)
+}
+
+export async function createManualJournal(
+  projectId: string,
+  body: {
+    entryDate: string
+    lines: {
+      glAccountId: string
+      debit: number
+      credit: number
+      memo?: string | null
+      userNotes?: string | null
+    }[]
+  },
+): Promise<GeneralLedgerEntry[]> {
+  await delay()
+  getUserIdOrThrow()
+  if (!(await getProject(projectId))) throw new Error('Not found')
+  const lines = body.lines ?? []
+  if (lines.length < 2) throw new Error('A manual journal needs at least two lines')
+  let sumDr = 0
+  let sumCr = 0
+  const normalized: typeof lines = []
+  for (const ln of lines) {
+    const d = Number(ln.debit) || 0
+    const c = Number(ln.credit) || 0
+    if (d < 0 || c < 0) throw new Error('Debit and credit amounts must be non-negative')
+    if (d > MOCK_GL_EPS && c > MOCK_GL_EPS) throw new Error('Each line must be either a debit or a credit, not both')
+    if (d <= MOCK_GL_EPS && c <= MOCK_GL_EPS) throw new Error('Each line must have a positive debit or credit')
+    const acc = MOCK_GL_ACCOUNTS.find((a) => a.id === ln.glAccountId.trim())
+    if (!acc) throw new Error(`GL account not found: ${ln.glAccountId}`)
+    const debit = d > MOCK_GL_EPS ? d : 0
+    const credit = c > MOCK_GL_EPS ? c : 0
+    sumDr += debit
+    sumCr += credit
+    normalized.push({ ...ln, glAccountId: acc.id, debit, credit })
+  }
+  if (Math.abs(sumDr - sumCr) > MOCK_GL_EPS) {
+    throw new Error(`Debits (${sumDr.toFixed(2)}) must equal credits (${sumCr.toFixed(2)})`)
+  }
+  const sourceId = id('glj')
+  const entryDate = body.entryDate.slice(0, 10)
+  const createdAt = nowIso()
+  const bucket = mockGlBucket(projectId)
+  const created: GeneralLedgerEntry[] = []
+  for (const ln of normalized) {
+    const acc = MOCK_GL_ACCOUNTS.find((a) => a.id === ln.glAccountId)!
+    const memo =
+      ln.memo != null && String(ln.memo).trim() !== '' ? String(ln.memo).trim() : undefined
+    const userNotes =
+      ln.userNotes != null && String(ln.userNotes).trim() !== ''
+        ? String(ln.userNotes).trim()
+        : undefined
+    const row: GeneralLedgerEntry = {
+      id: id('gle'),
+      projectId,
+      entryDate,
+      glAccountId: ln.glAccountId,
+      accountCode: acc.code,
+      accountName: acc.name,
+      debit: ln.debit,
+      credit: ln.credit,
+      memo,
+      userNotes,
+      sourceKind: 'manual_journal',
+      sourceId,
+      isManual: true,
+      createdAt,
+    }
+    bucket.push(row)
+    created.push(row)
+  }
+  return created
+}
+
+export async function updateGeneralLedgerEntryNotes(
+  projectId: string,
+  entryId: string,
+  userNotes: string | null,
+): Promise<GeneralLedgerEntry> {
+  await delay()
+  getUserIdOrThrow()
+  if (!(await getProject(projectId))) throw new Error('Not found')
+  const bucket = mockGlBucket(projectId)
+  const row = bucket.find((e) => e.id === entryId)
+  if (!row) throw new Error('Not found')
+  if (row.projectId !== projectId) throw new Error('Not found')
+  const n =
+    userNotes != null && String(userNotes).trim() !== '' ? String(userNotes).trim() : undefined
+  row.userNotes = n
+  return { ...row }
+}
+
+export async function deleteManualJournalEntry(projectId: string, entryId: string): Promise<void> {
+  await delay()
+  getUserIdOrThrow()
+  if (!(await getProject(projectId))) throw new Error('Not found')
+  const bucket = mockGlBucket(projectId)
+  const row = bucket.find((e) => e.id === entryId)
+  if (!row) throw new Error('Not found')
+  if (row.sourceKind !== 'manual_journal') throw new Error('Only user-posted manual journals can be deleted')
+  const sid = row.sourceId
+  const next = bucket.filter((e) => e.sourceId !== sid)
+  bucket.length = 0
+  bucket.push(...next)
 }
 
 export async function listVendorDisbursementBatches(

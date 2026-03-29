@@ -276,9 +276,14 @@ export interface GeneralLedgerEntry {
   accountName?: string
   debit: number
   credit: number
+  /** Description from posting integration (not editable). */
   memo?: string
+  /** User-editable notes (any line). */
+  userNotes?: string
   sourceKind: string
   sourceId: string
+  /** True when line is part of a user manual journal (`manual_journal`). */
+  isManual?: boolean
   createdAt: string
 }
 

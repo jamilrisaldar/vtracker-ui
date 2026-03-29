@@ -8,6 +8,8 @@ import { InvoiceRecordPanel } from '../InvoiceRecordPanel'
 import { PaymentRecordPanel } from '../PaymentRecordPanel'
 import { VendorAddPanel } from '../VendorAddPanel'
 import { VendorDisbursementsAdvancesSection } from './VendorDisbursementsAdvancesSection'
+import { VendorBillingGlIconButton, VendorBillingGlModal, type VendorBillingGlSection } from '../VendorBillingGlModal'
+import { GL_SOURCE_KINDS } from '../../utils/glSourceKinds'
 
 function vendorKindLabel(k: Vendor['vendorKind']): string {
   if (k === 'person') return 'Person'
@@ -84,6 +86,12 @@ export function VendorsTab({
   /** Prefill new-invoice drawer from an existing row (vendor detail: copy invoice). */
   const [invoiceCopyTemplate, setInvoiceCopyTemplate] = useState<Invoice | null>(null)
 
+  const [glModalOpen, setGlModalOpen] = useState(false)
+  const [glModalTitle, setGlModalTitle] = useState('')
+  const [glModalSections, setGlModalSections] = useState<VendorBillingGlSection[]>([])
+  const [glModalLoading, setGlModalLoading] = useState(false)
+  const [glModalError, setGlModalError] = useState<string | null>(null)
+
   const actionsDisabled = readOnly
 
   const detailVendor = useMemo(
@@ -113,9 +121,72 @@ export function VendorsTab({
 
   const invoicesById = useMemo(() => {
     const m = new Map<string, Invoice>()
-    invoices.forEach((i) => m.set(i.id, i))
+    for (const i of invoices) m.set(i.id, i)
+    for (const i of displayInvoices) m.set(i.id, i)
     return m
-  }, [invoices])
+  }, [invoices, displayInvoices])
+
+  const closeGlModal = () => {
+    setGlModalOpen(false)
+    setGlModalError(null)
+    setGlModalSections([])
+  }
+
+  const openInvoiceGlModal = (i: Invoice) => {
+    void (async () => {
+      setGlModalTitle(`GL entries — Invoice ${i.invoiceNumber}`)
+      setGlModalOpen(true)
+      setGlModalLoading(true)
+      setGlModalError(null)
+      setGlModalSections([])
+      try {
+        const entries = await api.listGeneralLedgerEntries(projectId, {
+          sourceKind: GL_SOURCE_KINDS.vendorInvoice,
+          sourceId: i.id,
+        })
+        setGlModalSections([{ title: 'Invoice accrual', subtitle: `Invoice ${i.invoiceNumber}`, entries }])
+      } catch (e) {
+        setGlModalError(e instanceof Error ? e.message : 'Could not load GL entries.')
+      } finally {
+        setGlModalLoading(false)
+      }
+    })()
+  }
+
+  const openPaymentGlModal = (p: Payment, inv: Invoice | undefined) => {
+    void (async () => {
+      const invLabel = inv?.invoiceNumber ?? p.invoiceId
+      setGlModalTitle(`GL entries — Payment (${invLabel})`)
+      setGlModalOpen(true)
+      setGlModalLoading(true)
+      setGlModalError(null)
+      setGlModalSections([])
+      try {
+        const [invEntries, payEntries] = await Promise.all([
+          api.listGeneralLedgerEntries(projectId, {
+            sourceKind: GL_SOURCE_KINDS.vendorInvoice,
+            sourceId: p.invoiceId,
+          }),
+          api.listGeneralLedgerEntries(projectId, {
+            sourceKind: GL_SOURCE_KINDS.vendorInvoicePayment,
+            sourceId: p.id,
+          }),
+        ])
+        setGlModalSections([
+          {
+            title: 'Related invoice (accrual)',
+            subtitle: inv ? `Invoice ${inv.invoiceNumber}` : undefined,
+            entries: invEntries,
+          },
+          { title: 'This payment (expense / clearing / prepaid)', entries: payEntries },
+        ])
+      } catch (e) {
+        setGlModalError(e instanceof Error ? e.message : 'Could not load GL entries.')
+      } finally {
+        setGlModalLoading(false)
+      }
+    })()
+  }
 
   const paymentInvoiceOptions =
     editingPayment != null ? invoices : detailVendorId ? displayInvoices : invoices
@@ -327,6 +398,7 @@ export function VendorsTab({
                                 >
                                   <PencilIcon />
                                 </button>
+                                <VendorBillingGlIconButton onClick={() => openInvoiceGlModal(i)} />
                                 <button
                                   type="button"
                                   title="Copy to new invoice"
@@ -439,22 +511,27 @@ export function VendorsTab({
                           return (
                             <tr key={p.id} className="border-b border-slate-100">
                               <td className="whitespace-nowrap px-2 py-3 align-middle">
-                                <button
-                                  type="button"
-                                  title="Edit payment"
-                                  aria-label="Edit payment"
-                                  disabled={actionsDisabled}
-                                  className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
-                                  onClick={() => {
-                                    setEditingVendor(null)
-                                    setEditingInvoice(null)
-                                    setInvoiceCopyTemplate(null)
-                                    setEditingPayment(p)
-                                    setPanelMode('payment')
-                                  }}
-                                >
-                                  <PencilIcon />
-                                </button>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    title="Edit payment"
+                                    aria-label="Edit payment"
+                                    disabled={actionsDisabled}
+                                    className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
+                                    onClick={() => {
+                                      setEditingVendor(null)
+                                      setEditingInvoice(null)
+                                      setInvoiceCopyTemplate(null)
+                                      setEditingPayment(p)
+                                      setPanelMode('payment')
+                                    }}
+                                  >
+                                    <PencilIcon />
+                                  </button>
+                                  <VendorBillingGlIconButton
+                                    onClick={() => openPaymentGlModal(p, invoicesById.get(p.invoiceId))}
+                                  />
+                                </div>
                               </td>
                               <td className="px-4 py-3">{formatDate(p.paidDate)}</td>
                               <td className="px-4 py-3 font-mono text-xs">
@@ -633,6 +710,15 @@ export function VendorsTab({
           </div>
         </section>
       )}
+
+      <VendorBillingGlModal
+        open={glModalOpen}
+        title={glModalTitle}
+        sections={glModalSections}
+        loading={glModalLoading}
+        error={glModalError}
+        onClose={closeGlModal}
+      />
 
       {panelMode !== null && !(panelMode === 'payment' && detailVendorId != null) && (
         <div className="fixed inset-0 z-[52] bg-slate-900/40" aria-hidden="true">

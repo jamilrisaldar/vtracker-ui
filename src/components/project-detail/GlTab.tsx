@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as api from '../../api/dataApi'
 import type { GeneralLedgerEntry, GlAccount, GlCategory, GlSubcategory } from '../../types'
 import { formatDate, formatMoney } from '../../utils/format'
@@ -48,8 +48,18 @@ type GlSidePanel =
   | { instanceId: string; kind: 'subcategory'; mode: 'create' | 'edit'; row?: GlSubcategory }
   | { instanceId: string; kind: 'account'; mode: 'create' | 'edit'; row?: GlAccount }
 
+const GL_EPS = 0.01
+
 function newGlPanelInstance(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now())
+}
+
+type MjLine = {
+  key: string
+  glAccountId: string
+  debitStr: string
+  creditStr: string
+  memoStr: string
 }
 
 function trimGlCode(s: string, max = 32) {
@@ -70,6 +80,7 @@ export function GlTab({
   canEditGlChart?: boolean
 }) {
   const allowChartEdits = canEditGlChart && !readOnly
+  const allowLedgerEdits = !readOnly
 
   const [categories, setCategories] = useState<GlCategory[]>([])
   const [subcategories, setSubcategories] = useState<GlSubcategory[]>([])
@@ -81,6 +92,16 @@ export function GlTab({
   const [glEnd, setGlEnd] = useState('')
   const [panel, setPanel] = useState<GlSidePanel>(null)
   const [saving, setSaving] = useState(false)
+  const [topTab, setTopTab] = useState<'chart' | 'ledger'>('chart')
+  const [mjDate, setMjDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [mjLines, setMjLines] = useState<MjLine[]>(() => [
+    { key: newGlPanelInstance(), glAccountId: '', debitStr: '', creditStr: '', memoStr: '' },
+    { key: newGlPanelInstance(), glAccountId: '', debitStr: '', creditStr: '', memoStr: '' },
+  ])
+  const [mjSaving, setMjSaving] = useState(false)
+  const [manualJournalPanelOpen, setManualJournalPanelOpen] = useState(false)
+  const [noteDraft, setNoteDraft] = useState<Record<string, string>>({})
+  const [noteSavingId, setNoteSavingId] = useState<string | null>(null)
 
   const [catCode, setCatCode] = useState('')
   const [catName, setCatName] = useState('')
@@ -140,8 +161,17 @@ export function GlTab({
   }, [projectId, glStart, glEnd, onError])
 
   useEffect(() => {
+    if (topTab !== 'ledger') return
     void loadGl()
-  }, [loadGl])
+  }, [topTab, loadGl])
+
+  useEffect(() => {
+    const m: Record<string, string> = {}
+    for (const e of glEntries) {
+      m[e.id] = e.userNotes ?? ''
+    }
+    setNoteDraft(m)
+  }, [glEntries])
 
   useEffect(() => {
     if (!panel) return
@@ -203,8 +233,144 @@ export function GlTab({
 
   const closePanel = () => setPanel(null)
 
+  const displayGlEntries = useMemo(() => {
+    return [...glEntries].sort((a, b) => {
+      const dc = b.entryDate.localeCompare(a.entryDate)
+      if (dc !== 0) return dc
+      const sc = (a.sourceId ?? '').localeCompare(b.sourceId ?? '')
+      if (sc !== 0) return sc
+      return (a.createdAt ?? '').localeCompare(b.createdAt ?? '')
+    })
+  }, [glEntries])
+
+  const manualJournalDeleteAnchorIds = useMemo(() => {
+    const seen = new Set<string>()
+    const anchors = new Set<string>()
+    for (const r of displayGlEntries) {
+      if (!r.isManual) continue
+      if (seen.has(r.sourceId)) continue
+      seen.add(r.sourceId)
+      anchors.add(r.id)
+    }
+    return anchors
+  }, [displayGlEntries])
+
+  const activeGlAccounts = useMemo(
+    () => accounts.filter((a) => a.isActive !== false).sort((a, b) => (a.code ?? '').localeCompare(b.code ?? '')),
+    [accounts],
+  )
+
+  const mjTotals = useMemo(() => {
+    let dr = 0
+    let cr = 0
+    for (const l of mjLines) {
+      const d = parseFloat(l.debitStr) || 0
+      const c = parseFloat(l.creditStr) || 0
+      if (d > GL_EPS) dr += d
+      if (c > GL_EPS) cr += c
+    }
+    return { dr, cr, diff: dr - cr }
+  }, [mjLines])
+
+  const addMjLine = () => {
+    setMjLines((prev) => [
+      ...prev,
+      { key: newGlPanelInstance(), glAccountId: '', debitStr: '', creditStr: '', memoStr: '' },
+    ])
+  }
+
+  const removeMjLine = (key: string) => {
+    setMjLines((prev) => (prev.length <= 2 ? prev : prev.filter((l) => l.key !== key)))
+  }
+
+  const updateMjLine = (key: string, patch: Partial<MjLine>) => {
+    setMjLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)))
+  }
+
+  const submitManualJournal = async () => {
+    const built: { glAccountId: string; debit: number; credit: number; memo?: string | null }[] = []
+    for (const l of mjLines) {
+      if (!l.glAccountId.trim()) continue
+      const d = parseFloat(l.debitStr) || 0
+      const c = parseFloat(l.creditStr) || 0
+      if (d <= GL_EPS && c <= GL_EPS) continue
+      if (d > GL_EPS && c > GL_EPS) {
+        onError('Each line must have either a debit or a credit, not both.')
+        return
+      }
+      built.push({
+        glAccountId: l.glAccountId,
+        debit: d > GL_EPS ? d : 0,
+        credit: c > GL_EPS ? c : 0,
+        memo: l.memoStr.trim() || null,
+      })
+    }
+    if (built.length < 2) {
+      onError('Add at least two lines with an account and a debit or credit amount.')
+      return
+    }
+    const sumDr = built.reduce((s, x) => s + x.debit, 0)
+    const sumCr = built.reduce((s, x) => s + x.credit, 0)
+    if (Math.abs(sumDr - sumCr) > GL_EPS) {
+      onError(`Debits (${sumDr.toFixed(2)}) must equal credits (${sumCr.toFixed(2)}).`)
+      return
+    }
+    setMjSaving(true)
+    onError(null)
+    try {
+      await api.createManualJournal(projectId, { entryDate: mjDate, lines: built })
+      await loadGl()
+      setMjLines([
+        { key: newGlPanelInstance(), glAccountId: '', debitStr: '', creditStr: '', memoStr: '' },
+        { key: newGlPanelInstance(), glAccountId: '', debitStr: '', creditStr: '', memoStr: '' },
+      ])
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Could not post journal.')
+    } finally {
+      setMjSaving(false)
+    }
+  }
+
+  const saveEntryNotes = async (entryId: string) => {
+    setNoteSavingId(entryId)
+    onError(null)
+    try {
+      const raw = noteDraft[entryId] ?? ''
+      const userNotes = raw.trim() === '' ? null : raw.trim()
+      const updated = await api.updateGeneralLedgerEntryNotes(projectId, entryId, userNotes)
+      setGlEntries((prev) => prev.map((e) => (e.id === entryId ? updated : e)))
+      setNoteDraft((d) => ({ ...d, [entryId]: updated.userNotes ?? '' }))
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Could not save notes.')
+    } finally {
+      setNoteSavingId(null)
+    }
+  }
+
+  const deleteManualJournal = async (entryId: string) => {
+    if (!confirm('Delete this entire manual journal (all lines)?')) return
+    onError(null)
+    try {
+      await api.deleteManualJournalEntry(projectId, entryId)
+      await loadGl()
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Could not delete journal.')
+    }
+  }
+
   const exportGlCsv = () => {
-    const headers = ['entryDate', 'accountCode', 'accountName', 'debit', 'credit', 'memo', 'sourceKind', 'sourceId']
+    const headers = [
+      'entryDate',
+      'accountCode',
+      'accountName',
+      'debit',
+      'credit',
+      'memo',
+      'userNotes',
+      'sourceKind',
+      'sourceId',
+      'isManual',
+    ]
     const lines = [headers.join(',')]
     for (const r of glEntries) {
       lines.push(
@@ -215,8 +381,10 @@ export function GlTab({
           String(r.debit),
           String(r.credit),
           `"${(r.memo ?? '').replace(/"/g, '""')}"`,
+          `"${(r.userNotes ?? '').replace(/"/g, '""')}"`,
           r.sourceKind,
           r.sourceId,
+          r.isManual ? 'true' : 'false',
         ].join(','),
       )
     }
@@ -333,8 +501,26 @@ export function GlTab({
             : 'Add GL account'
           : ''
 
+  const tabBtn = (id: 'chart' | 'ledger', label: string) => (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={topTab === id}
+      className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+        topTab === id ? 'border-teal-600 text-teal-900' : 'border-transparent text-slate-600 hover:text-slate-900'
+      }`}
+      onClick={() => setTopTab(id)}
+    >
+      {label}
+    </button>
+  )
+
   return (
-    <div className="space-y-10">
+    <div className="space-y-6">
+      <div className="flex gap-1 border-b border-slate-200" role="tablist">
+        {tabBtn('chart', 'Chart of Accounts')}
+        {tabBtn('ledger', 'General ledger')}
+      </div>
       {allowChartEdits && panel ? (
         <>
           <div
@@ -550,23 +736,27 @@ export function GlTab({
         </>
       ) : null}
 
-      <p className="text-sm text-slate-600">
-        Chart of accounts (global) and project general ledger. Run migrations{' '}
-        <code className="rounded bg-slate-100 px-1 text-xs">027</code>,{' '}
-        <code className="rounded bg-slate-100 px-1 text-xs">028</code>, and{' '}
-        <code className="rounded bg-slate-100 px-1 text-xs">029</code> on PostgreSQL for full behaviour.
-        {!allowChartEdits ? (
-          <>
-            {' '}
-            <span className="font-medium text-slate-700">
-              Only Administrators can add or change GL categories, subcategories, and accounts.
-            </span>
-          </>
-        ) : null}
-      </p>
-      {loading ? <p className="text-sm text-slate-600">Loading…</p> : null}
+      {topTab === 'chart' && loading ? <p className="text-sm text-slate-600">Loading…</p> : null}
 
-      <section>
+      {topTab === 'chart' && !loading ? (
+        <>
+          <p className="text-sm text-slate-600">
+            Global chart of accounts (categories, subcategories, and accounts). Run migrations{' '}
+            <code className="rounded bg-slate-100 px-1 text-xs">027</code>,{' '}
+            <code className="rounded bg-slate-100 px-1 text-xs">028</code>,{' '}
+            <code className="rounded bg-slate-100 px-1 text-xs">029</code>, and{' '}
+            <code className="rounded bg-slate-100 px-1 text-xs">035</code> on PostgreSQL for full behaviour.
+            {!allowChartEdits ? (
+              <>
+                {' '}
+                <span className="font-medium text-slate-700">
+                  Only Administrators can add or change GL categories, subcategories, and accounts.
+                </span>
+              </>
+            ) : null}
+          </p>
+
+          <section>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-medium text-slate-900">GL categories</h2>
           {allowChartEdits ? (
@@ -835,81 +1025,287 @@ export function GlTab({
           </table>
         </div>
       </section>
+        </>
+      ) : null}
 
-      <section>
-        <h2 className="text-lg font-medium text-slate-900">General ledger (this project)</h2>
-        <div className="mt-3 flex flex-wrap items-end gap-3 rounded-lg border border-slate-100 bg-white p-3">
-          <label className="text-xs font-medium text-slate-600">
-            From
-            <input
-              type="date"
-              className="mt-1 block rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
-              value={glStart}
-              onChange={(e) => setGlStart(e.target.value)}
-            />
-          </label>
-          <label className="text-xs font-medium text-slate-600">
-            To
-            <input
-              type="date"
-              className="mt-1 block rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
-              value={glEnd}
-              onChange={(e) => setGlEnd(e.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => void loadGl()}
-            className="rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white hover:bg-teal-700"
-          >
-            Apply
-          </button>
-          <button
-            type="button"
-            onClick={exportGlCsv}
-            disabled={glEntries.length === 0}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-          >
-            Download CSV
-          </button>
-        </div>
-        <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          {glLoading ? <p className="p-4 text-sm text-slate-600">Loading…</p> : null}
-          {!glLoading && glEntries.length === 0 ? (
-            <p className="p-4 text-sm text-slate-600">No lines for this range.</p>
+      {topTab === 'ledger' ? (
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-medium text-slate-900">General ledger (this project)</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              System postings and manual journals. Notes can be edited on any line. Manual journals require matching
+              debits and credits (at least two lines). Only manual journals can be deleted.
+            </p>
+          </div>
+
+          {allowLedgerEdits ? (
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <button
+                type="button"
+                id="manual-journal-toggle"
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50"
+                aria-expanded={manualJournalPanelOpen}
+                aria-controls="manual-journal-panel"
+                onClick={() => setManualJournalPanelOpen((o) => !o)}
+              >
+                <div className="min-w-0">
+                  <h3 className="text-sm font-medium text-slate-900">Post manual journal</h3>
+                  <p className="mt-0.5 text-xs text-slate-600">
+                    {manualJournalPanelOpen
+                      ? 'Each line: one account and either a debit or a credit. Totals must balance before posting.'
+                      : 'Expand to add a balanced double-entry journal.'}
+                  </p>
+                </div>
+                <svg
+                  className={`h-5 w-5 shrink-0 text-slate-500 transition-transform ${manualJournalPanelOpen ? 'rotate-180' : ''}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  aria-hidden
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {manualJournalPanelOpen ? (
+                <div
+                  id="manual-journal-panel"
+                  role="region"
+                  aria-labelledby="manual-journal-toggle"
+                  className="border-t border-slate-100 px-4 pb-4 pt-3"
+                >
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className="text-xs font-medium text-slate-600">
+                      Entry date
+                      <input
+                        type="date"
+                        className="mt-1 block rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                        value={mjDate}
+                        onChange={(e) => setMjDate(e.target.value)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addMjLine}
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Add line
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {mjLines.map((line) => (
+                      <div
+                        key={line.key}
+                        className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-100 bg-slate-50/80 p-2"
+                      >
+                        <label className="min-w-[12rem] flex-1 text-xs font-medium text-slate-600">
+                          GL account
+                          <select
+                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                            value={line.glAccountId}
+                            onChange={(e) => updateMjLine(line.key, { glAccountId: e.target.value })}
+                          >
+                            <option value="">— Select —</option>
+                            {activeGlAccounts.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.code} — {a.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="w-24 text-xs font-medium text-slate-600">
+                          Debit
+                          <input
+                            inputMode="decimal"
+                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-mono"
+                            value={line.debitStr}
+                            onChange={(e) => updateMjLine(line.key, { debitStr: e.target.value })}
+                            placeholder="0"
+                          />
+                        </label>
+                        <label className="w-24 text-xs font-medium text-slate-600">
+                          Credit
+                          <input
+                            inputMode="decimal"
+                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-mono"
+                            value={line.creditStr}
+                            onChange={(e) => updateMjLine(line.key, { creditStr: e.target.value })}
+                            placeholder="0"
+                          />
+                        </label>
+                        <label className="min-w-[8rem] flex-1 text-xs font-medium text-slate-600">
+                          Line memo
+                          <input
+                            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                            value={line.memoStr}
+                            onChange={(e) => updateMjLine(line.key, { memoStr: e.target.value })}
+                            placeholder="Optional"
+                          />
+                        </label>
+                        {mjLines.length > 2 ? (
+                          <button
+                            type="button"
+                            title="Remove line"
+                            aria-label="Remove line"
+                            className={`${iconBtnClass} text-red-600 hover:border-red-200 hover:bg-red-50`}
+                            onClick={() => removeMjLine(line.key)}
+                          >
+                            <TrashIcon />
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span
+                      className={Math.abs(mjTotals.diff) <= GL_EPS ? 'text-slate-600' : 'font-medium text-amber-800'}
+                    >
+                      Debits {mjTotals.dr.toFixed(2)} · Credits {mjTotals.cr.toFixed(2)}
+                      {Math.abs(mjTotals.diff) > GL_EPS
+                        ? ` · Out of balance by ${mjTotals.diff.toFixed(2)}`
+                        : ' · Balanced'}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={mjSaving || Math.abs(mjTotals.diff) > GL_EPS || mjTotals.dr <= GL_EPS}
+                      onClick={() => void submitManualJournal()}
+                      className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-40"
+                    >
+                      {mjSaving ? 'Posting…' : 'Post journal'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           ) : null}
-          {!glLoading && glEntries.length > 0 ? (
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-2 py-2">Date</th>
-                  <th className="px-2 py-2">Account</th>
-                  <th className="px-2 py-2">Debit</th>
-                  <th className="px-2 py-2">Credit</th>
-                  <th className="px-2 py-2">Source</th>
-                </tr>
-              </thead>
-              <tbody>
-                {glEntries.map((r) => (
-                  <tr key={r.id} className="border-b border-slate-100">
-                    <td className="whitespace-nowrap px-2 py-1.5">{formatDate(r.entryDate)}</td>
-                    <td className="px-2 py-1.5">
-                      <span className="font-mono text-xs">{r.accountCode}</span> {r.accountName}
-                    </td>
-                    <td className="px-2 py-1.5">{r.debit > 0 ? formatMoney(r.debit) : '—'}</td>
-                    <td className="px-2 py-1.5">{r.credit > 0 ? formatMoney(r.credit) : '—'}</td>
-                    <td className="px-2 py-1.5 text-xs text-slate-600">
-                      {r.sourceKind}
-                      <br />
-                      <span className="font-mono">{r.sourceId.slice(0, 8)}…</span>
-                    </td>
+
+          <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-100 bg-white p-3">
+            <label className="text-xs font-medium text-slate-600">
+              From
+              <input
+                type="date"
+                className="mt-1 block rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                value={glStart}
+                onChange={(e) => setGlStart(e.target.value)}
+              />
+            </label>
+            <label className="text-xs font-medium text-slate-600">
+              To
+              <input
+                type="date"
+                className="mt-1 block rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                value={glEnd}
+                onChange={(e) => setGlEnd(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void loadGl()}
+              className="rounded-lg bg-teal-600 px-3 py-2 text-sm font-medium text-white hover:bg-teal-700"
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              onClick={exportGlCsv}
+              disabled={glEntries.length === 0}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+            >
+              Download CSV
+            </button>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+            {glLoading ? <p className="p-4 text-sm text-slate-600">Loading…</p> : null}
+            {!glLoading && glEntries.length === 0 ? (
+              <p className="p-4 text-sm text-slate-600">No lines for this range.</p>
+            ) : null}
+            {!glLoading && glEntries.length > 0 ? (
+              <table className="min-w-full text-left text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-2 py-2">Date</th>
+                    <th className="px-2 py-2">Account</th>
+                    <th className="px-2 py-2">Debit</th>
+                    <th className="px-2 py-2">Credit</th>
+                    <th className="px-2 py-2">Memo</th>
+                    <th className="min-w-[10rem] px-2 py-2">Notes</th>
+                    <th className="px-2 py-2">Source</th>
+                    <th className="px-2 py-2">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : null}
-        </div>
-      </section>
+                </thead>
+                <tbody>
+                  {displayGlEntries.map((r) => (
+                    <tr key={r.id} className="border-b border-slate-100">
+                      <td className="whitespace-nowrap px-2 py-1.5">{formatDate(r.entryDate)}</td>
+                      <td className="px-2 py-1.5">
+                        <span className="font-mono text-xs">{r.accountCode}</span> {r.accountName}
+                      </td>
+                      <td className="px-2 py-1.5">{r.debit > 0 ? formatMoney(r.debit) : '—'}</td>
+                      <td className="px-2 py-1.5">{r.credit > 0 ? formatMoney(r.credit) : '—'}</td>
+                      <td className="max-w-[12rem] px-2 py-1.5 text-xs text-slate-600">{r.memo ?? '—'}</td>
+                      <td className="px-2 py-1.5 align-top">
+                        {allowLedgerEdits ? (
+                          <textarea
+                            rows={2}
+                            className="w-full min-w-[8rem] rounded border border-slate-200 px-2 py-1 text-xs"
+                            value={noteDraft[r.id] ?? ''}
+                            onChange={(e) => setNoteDraft((d) => ({ ...d, [r.id]: e.target.value }))}
+                            placeholder="Your notes"
+                          />
+                        ) : (
+                          <span className="text-xs text-slate-600">{r.userNotes?.trim() ? r.userNotes : '—'}</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 text-xs text-slate-600">
+                        {r.sourceKind}
+                        <br />
+                        <span className="font-mono">{r.sourceId.slice(0, 8)}…</span>
+                        {r.isManual ? (
+                          <>
+                            <br />
+                            <span className="text-teal-700">Manual</span>
+                          </>
+                        ) : null}
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-1.5">
+                        {allowLedgerEdits ? (
+                          <div className="flex flex-col gap-1">
+                            <button
+                              type="button"
+                              disabled={
+                                noteSavingId === r.id ||
+                                (noteDraft[r.id] ?? '') === (r.userNotes ?? '')
+                              }
+                              onClick={() => void saveEntryNotes(r.id)}
+                              className="rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                            >
+                              {noteSavingId === r.id ? 'Saving…' : 'Save notes'}
+                            </button>
+                            {manualJournalDeleteAnchorIds.has(r.id) ? (
+                              <button
+                                type="button"
+                                title="Delete entire manual journal"
+                                aria-label="Delete entire manual journal"
+                                className={`${iconBtnClass} text-red-600 hover:border-red-200 hover:bg-red-50`}
+                                onClick={() => void deleteManualJournal(r.id)}
+                              >
+                                <TrashIcon />
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
     </div>
   )
 }

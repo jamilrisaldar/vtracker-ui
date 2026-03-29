@@ -4,6 +4,8 @@ import type { Vendor, VendorAdvance } from '../../types'
 import { formatDate } from '../../utils/format'
 import { MoneyAmount } from '../MoneyAmount'
 import { VendorAdvanceRecordPanel } from '../VendorAdvanceRecordPanel'
+import { VendorBillingGlIconButton, VendorBillingGlModal, type VendorBillingGlSection } from '../VendorBillingGlModal'
+import { GL_SOURCE_KINDS } from '../../utils/glSourceKinds'
 
 const iconBtnClass =
   'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'
@@ -54,6 +56,11 @@ export function VendorDisbursementsAdvancesSection({
   const [advances, setAdvances] = useState<VendorAdvance[]>([])
   const [loading, setLoading] = useState(true)
   const [panelAdvance, setPanelAdvance] = useState<VendorAdvance | 'new' | null>(null)
+  const [glModalOpen, setGlModalOpen] = useState(false)
+  const [glModalTitle, setGlModalTitle] = useState('')
+  const [glModalSections, setGlModalSections] = useState<VendorBillingGlSection[]>([])
+  const [glModalLoading, setGlModalLoading] = useState(false)
+  const [glModalError, setGlModalError] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
     onError(null)
@@ -71,6 +78,62 @@ export function VendorDisbursementsAdvancesSection({
   useEffect(() => {
     void reload()
   }, [reload])
+
+  const closeGlModal = () => {
+    setGlModalOpen(false)
+    setGlModalError(null)
+    setGlModalSections([])
+  }
+
+  const openAdvanceGlModal = (a: VendorAdvance) => {
+    void (async () => {
+      setGlModalTitle('GL entries — Vendor advance')
+      setGlModalOpen(true)
+      setGlModalLoading(true)
+      setGlModalError(null)
+      setGlModalSections([])
+      try {
+        const [main, detail] = await Promise.all([
+          api.listGeneralLedgerEntries(projectId, {
+            sourceKind: GL_SOURCE_KINDS.vendorAdvance,
+            sourceId: a.id,
+          }),
+          api.getVendorAdvance(projectId, a.id),
+        ])
+        const usages = detail?.usages ?? []
+        const usageEntryLists =
+          usages.length > 0
+            ? await Promise.all(
+                usages.map((u) =>
+                  api.listGeneralLedgerEntries(projectId, {
+                    sourceKind: GL_SOURCE_KINDS.vendorAdvanceUsage,
+                    sourceId: u.id,
+                  }),
+                ),
+              )
+            : []
+        const sections: VendorBillingGlSection[] = [
+          {
+            title: 'Advance posting (prepaid / clearing)',
+            subtitle: `Paid ${formatDate(a.paidDate)}`,
+            entries: main,
+          },
+        ]
+        usages.forEach((u, idx) => {
+          sections.push({
+            title: 'Applied usage',
+            subtitle: `${formatDate(u.usageDate)} — ${u.description}`,
+            entries: usageEntryLists[idx] ?? [],
+          })
+        })
+        setGlModalSections(sections)
+      } catch (e) {
+        setGlModalError(e instanceof Error ? e.message : 'Could not load GL entries.')
+      } finally {
+        setGlModalLoading(false)
+      }
+    })()
+  }
 
   return (
     <div className="space-y-3">
@@ -128,16 +191,19 @@ export function VendorDisbursementsAdvancesSection({
               advances.map((a) => (
                 <tr key={a.id} className="border-b border-slate-100">
                   <td className="whitespace-nowrap px-2 py-2">
-                    <button
-                      type="button"
-                      title="Edit advance"
-                      aria-label="Edit advance"
-                      disabled={readOnly}
-                      className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
-                      onClick={() => setPanelAdvance(a)}
-                    >
-                      <PencilIcon />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        title="Edit advance"
+                        aria-label="Edit advance"
+                        disabled={readOnly}
+                        className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
+                        onClick={() => setPanelAdvance(a)}
+                      >
+                        <PencilIcon />
+                      </button>
+                      <VendorBillingGlIconButton onClick={() => openAdvanceGlModal(a)} />
+                    </div>
                   </td>
                   <td className="px-4 py-2">{formatDate(a.paidDate)}</td>
                   {!vendorId ? (
@@ -183,6 +249,15 @@ export function VendorDisbursementsAdvancesSection({
           </tbody>
         </table>
       </div>
+
+      <VendorBillingGlModal
+        open={glModalOpen}
+        title={glModalTitle}
+        sections={glModalSections}
+        loading={glModalLoading}
+        error={glModalError}
+        onClose={closeGlModal}
+      />
 
       {panelAdvance != null ? (
         <div className="fixed inset-0 z-[60] bg-slate-900/40" aria-hidden="true">

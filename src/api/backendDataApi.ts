@@ -1450,14 +1450,54 @@ export async function updateGlAccount(
 
 export async function listGeneralLedgerEntries(
   projectId: string,
-  opts?: { startDate?: string; endDate?: string },
+  opts?: { startDate?: string; endDate?: string; sourceKind?: string; sourceId?: string },
 ): Promise<GeneralLedgerEntry[]> {
   const q = new URLSearchParams()
   if (opts?.startDate) q.set('startDate', opts.startDate.slice(0, 10))
   if (opts?.endDate) q.set('endDate', opts.endDate.slice(0, 10))
+  if (opts?.sourceKind) q.set('sourceKind', opts.sourceKind)
+  if (opts?.sourceId) q.set('sourceId', opts.sourceId)
   const qs = q.toString()
   const path = `/api/v1/projects/${encodeURIComponent(projectId)}/general-ledger-entries${qs ? `?${qs}` : ''}`
   return apiRequest<GeneralLedgerEntry[]>(path)
+}
+
+export async function createManualJournal(
+  projectId: string,
+  body: {
+    entryDate: string
+    lines: {
+      glAccountId: string
+      debit: number
+      credit: number
+      memo?: string | null
+      userNotes?: string | null
+    }[]
+  },
+): Promise<GeneralLedgerEntry[]> {
+  const res = await apiRequest<{ entries: GeneralLedgerEntry[] }>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/general-ledger/manual-journals`,
+    { method: 'POST', body: JSON.stringify(body) },
+  )
+  return res.entries
+}
+
+export async function updateGeneralLedgerEntryNotes(
+  projectId: string,
+  entryId: string,
+  userNotes: string | null,
+): Promise<GeneralLedgerEntry> {
+  return apiRequest<GeneralLedgerEntry>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/general-ledger/entries/${encodeURIComponent(entryId)}`,
+    { method: 'PATCH', body: JSON.stringify({ userNotes }) },
+  )
+}
+
+export async function deleteManualJournalEntry(projectId: string, entryId: string): Promise<void> {
+  await apiRequest<void>(
+    `/api/v1/projects/${encodeURIComponent(projectId)}/general-ledger/entries/${encodeURIComponent(entryId)}`,
+    { method: 'DELETE' },
+  )
 }
 
 export async function listVendorDisbursementBatches(

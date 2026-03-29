@@ -796,10 +796,32 @@ export async function updateGlAccount(
 
 export async function listGeneralLedgerEntries(
   projectId: string,
-  opts?: { startDate?: string; endDate?: string },
+  opts?: { startDate?: string; endDate?: string; sourceKind?: string; sourceId?: string },
 ): Promise<GeneralLedgerEntry[]> {
   if (isBackendAuthEnabled()) return backend.listGeneralLedgerEntries(projectId, opts)
   return mock.listGeneralLedgerEntries(projectId, opts)
+}
+
+export async function createManualJournal(
+  projectId: string,
+  body: Parameters<typeof backend.createManualJournal>[1],
+): Promise<GeneralLedgerEntry[]> {
+  if (isBackendAuthEnabled()) return backend.createManualJournal(projectId, body)
+  return mock.createManualJournal(projectId, body)
+}
+
+export async function updateGeneralLedgerEntryNotes(
+  projectId: string,
+  entryId: string,
+  userNotes: string | null,
+): Promise<GeneralLedgerEntry> {
+  if (isBackendAuthEnabled()) return backend.updateGeneralLedgerEntryNotes(projectId, entryId, userNotes)
+  return mock.updateGeneralLedgerEntryNotes(projectId, entryId, userNotes)
+}
+
+export async function deleteManualJournalEntry(projectId: string, entryId: string): Promise<void> {
+  if (isBackendAuthEnabled()) return backend.deleteManualJournalEntry(projectId, entryId)
+  return mock.deleteManualJournalEntry(projectId, entryId)
 }
 
 export async function listVendorDisbursementBatches(
