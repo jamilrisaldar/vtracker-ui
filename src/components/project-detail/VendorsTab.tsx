@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import * as api from '../../api/dataApi'
 import type { Invoice, Payment, Vendor, VendorAdvance } from '../../types'
+import { formatDate, formatMoney } from '../../utils/format'
+import { InvoiceRecordPanel } from '../InvoiceRecordPanel'
+import { PaymentRecordPanel } from '../PaymentRecordPanel'
+import { VendorAddPanel } from '../VendorAddPanel'
+import { VendorDisbursementsAdvancesSection } from './VendorDisbursementsAdvancesSection'
 
 function vendorKindLabel(k: Vendor['vendorKind']): string {
   if (k === 'person') return 'Person'
   if (k === 'government') return 'Government'
   return 'Company'
 }
-import { formatDate, formatMoney } from '../../utils/format'
-import { InvoiceRecordPanel } from '../InvoiceRecordPanel'
-import { PaymentRecordPanel } from '../PaymentRecordPanel'
-import { VendorAddPanel } from '../VendorAddPanel'
-import { VendorDisbursementsAdvancesSection } from './VendorDisbursementsAdvancesSection'
 
 const iconBtnClass =
   'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'
@@ -63,29 +63,27 @@ export function VendorsTab({
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null)
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null)
-  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null)
-  const [displayInvoices, setDisplayInvoices] = useState<Invoice[]>(invoices)
-  const [displayPayments, setDisplayPayments] = useState<Payment[]>(payments)
+  const [detailVendorId, setDetailVendorId] = useState<string | null>(null)
+  const [displayInvoices, setDisplayInvoices] = useState<Invoice[]>([])
+  const [displayPayments, setDisplayPayments] = useState<Payment[]>([])
   const [vendorAdvances, setVendorAdvances] = useState<VendorAdvance[]>([])
 
   const actionsDisabled = readOnly
 
-  const vendorBalances = useMemo(() => {
-    return vendors.map((v) => {
-      const invoiced = invoices.filter((i) => i.vendorId === v.id).reduce((s, i) => s + i.amount, 0)
-      const paid = payments.filter((p) => p.vendorId === v.id).reduce((s, p) => s + p.amount, 0)
-      const advancePool = vendorAdvances
-        .filter((a) => a.vendorId === v.id)
-        .reduce((s, a) => s + (a.remainingBalance ?? 0), 0)
-      return {
-        vendor: v,
-        invoiced,
-        paid,
-        apBalance: invoiced - paid,
-        advancePool,
-      }
-    })
-  }, [vendors, invoices, payments, vendorAdvances])
+  const detailVendor = useMemo(
+    () => (detailVendorId ? vendors.find((v) => v.id === detailVendorId) ?? null : null),
+    [vendors, detailVendorId],
+  )
+
+  const detailBalances = useMemo(() => {
+    if (!detailVendorId) return null
+    const invoiced = invoices.filter((i) => i.vendorId === detailVendorId).reduce((s, i) => s + i.amount, 0)
+    const paid = payments.filter((p) => p.vendorId === detailVendorId).reduce((s, p) => s + p.amount, 0)
+    const advancePool = vendorAdvances
+      .filter((a) => a.vendorId === detailVendorId)
+      .reduce((s, a) => s + (a.remainingBalance ?? 0), 0)
+    return { invoiced, paid, apBalance: invoiced - paid, advancePool }
+  }, [detailVendorId, invoices, payments, vendorAdvances])
 
   const closePanel = () => {
     setPanelMode(null)
@@ -101,37 +99,39 @@ export function VendorsTab({
   }, [invoices])
 
   const paymentInvoiceOptions =
-    editingPayment != null ? invoices : selectedVendorId ? displayInvoices : invoices
+    editingPayment != null ? invoices : detailVendorId ? displayInvoices : invoices
 
   useEffect(() => {
-    if (!selectedVendorId) {
-      setDisplayInvoices(invoices)
-      setDisplayPayments(payments)
+    if (!detailVendorId) {
+      setDisplayInvoices([])
+      setDisplayPayments([])
     }
-  }, [invoices, payments, selectedVendorId])
+  }, [detailVendorId])
 
   useEffect(() => {
     let ignore = false
-    if (!selectedVendorId) return
+    if (!detailVendorId) return
     void (async () => {
       try {
         onError(null)
-        const [inv, pay] = await Promise.all([
-          api.listInvoicesByVendor(projectId, selectedVendorId),
-          api.listPaymentsByVendor(projectId, selectedVendorId),
+        const [inv, pay, adv] = await Promise.all([
+          api.listInvoicesByVendor(projectId, detailVendorId),
+          api.listPaymentsByVendor(projectId, detailVendorId),
+          api.listVendorAdvances(projectId),
         ])
         if (ignore) return
         setDisplayInvoices(inv)
         setDisplayPayments(pay)
+        setVendorAdvances(adv)
       } catch (err) {
         if (ignore) return
-        onError(err instanceof Error ? err.message : 'Could not filter vendor data.')
+        onError(err instanceof Error ? err.message : 'Could not load vendor data.')
       }
     })()
     return () => {
       ignore = true
     }
-  }, [projectId, selectedVendorId, onError])
+  }, [projectId, detailVendorId, onError])
 
   useEffect(() => {
     let ignore = false
@@ -149,61 +149,294 @@ export function VendorsTab({
   }, [projectId, payments.length])
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-6">
       {readOnly ? (
         <p className="text-xs text-amber-800/90">View-only: vendor and billing changes are disabled.</p>
       ) : null}
 
-      <section>
-        <h2 className="text-lg font-medium text-slate-900">Vendor balances</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          A/P balance = invoiced − paid (negative means overpaid). Advance pool = unused vendor prepayments
-          remaining.
-        </p>
-        <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Vendor</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Invoiced</th>
-                <th className="px-4 py-3">Paid</th>
-                <th className="px-4 py-3">A/P balance</th>
-                <th className="px-4 py-3">Advance pool</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vendorBalances.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
-                    No vendors.
-                  </td>
-                </tr>
-              ) : (
-                vendorBalances.map((row) => (
-                  <tr key={row.vendor.id} className="border-b border-slate-100">
-                    <td className="px-4 py-2 font-medium text-slate-900">{row.vendor.name}</td>
-                    <td className="px-4 py-2 text-slate-600">{vendorKindLabel(row.vendor.vendorKind)}</td>
-                    <td className="px-4 py-2">{formatMoney(row.invoiced)}</td>
-                    <td className="px-4 py-2">{formatMoney(row.paid)}</td>
-                    <td
-                      className={`px-4 py-2 font-medium ${
-                        row.apBalance > 0 ? 'text-amber-800' : row.apBalance < 0 ? 'text-teal-800' : 'text-slate-700'
-                      }`}
+      {detailVendorId != null && detailVendor ? (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-slate-900/40"
+            aria-hidden
+            onClick={() => setDetailVendorId(null)}
+          />
+          <div className="fixed inset-y-0 right-0 z-[51] flex w-full max-w-4xl flex-col border-l border-slate-200 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-6 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">{detailVendor.name}</h2>
+                <p className="mt-0.5 text-sm text-slate-600">{vendorKindLabel(detailVendor.vendorKind)}</p>
+                {detailBalances ? (
+                  <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-600">
+                    <div>
+                      <dt className="inline text-slate-500">Invoiced: </dt>
+                      <dd className="inline font-medium text-slate-800">
+                        {formatMoney(detailBalances.invoiced)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="inline text-slate-500">Paid: </dt>
+                      <dd className="inline font-medium text-slate-800">{formatMoney(detailBalances.paid)}</dd>
+                    </div>
+                    <div>
+                      <dt className="inline text-slate-500">A/P: </dt>
+                      <dd
+                        className={`inline font-medium ${
+                          detailBalances.apBalance > 0
+                            ? 'text-amber-800'
+                            : detailBalances.apBalance < 0
+                              ? 'text-teal-800'
+                              : 'text-slate-800'
+                        }`}
+                      >
+                        {formatMoney(detailBalances.apBalance)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="inline text-slate-500">Advance pool: </dt>
+                      <dd className="inline font-medium text-slate-800">
+                        {formatMoney(detailBalances.advancePool)}
+                      </dd>
+                    </div>
+                  </dl>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailVendorId(null)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 space-y-10">
+              <section>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-base font-medium text-slate-900">Invoices</h3>
+                  {!readOnly ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingVendor(null)
+                        setEditingInvoice(null)
+                        setEditingPayment(null)
+                        setPanelMode('invoice')
+                      }}
+                      className="rounded-lg bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
                     >
-                      {formatMoney(row.apBalance)}
-                    </td>
-                    <td className="px-4 py-2 text-slate-700">{formatMoney(row.advancePool)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                      Record invoice
+                    </button>
+                  ) : null}
+                </div>
+                <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+                      <tr>
+                        <th className="w-11 min-w-[2.75rem] px-2 py-3">Actions</th>
+                        <th className="px-4 py-3">#</th>
+                        <th className="px-4 py-3">Amount</th>
+                        <th className="px-4 py-3">Issued</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="w-11 min-w-[2.75rem] px-2 py-3">
+                          <span className="sr-only">Delete</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayInvoices.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                            No invoices.
+                          </td>
+                        </tr>
+                      ) : (
+                        displayInvoices.map((i) => (
+                          <tr key={i.id} className="border-b border-slate-100">
+                            <td className="whitespace-nowrap px-2 py-3 align-middle">
+                              <button
+                                type="button"
+                                title="Edit invoice"
+                                aria-label="Edit invoice"
+                                disabled={actionsDisabled}
+                                className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
+                                onClick={() => {
+                                  setEditingVendor(null)
+                                  setEditingPayment(null)
+                                  setEditingInvoice(i)
+                                  setPanelMode('invoice')
+                                }}
+                              >
+                                <PencilIcon />
+                              </button>
+                            </td>
+                            <td className="px-4 py-3 font-mono text-xs">{i.invoiceNumber}</td>
+                            <td className="px-4 py-3">{formatMoney(i.amount, i.currency)}</td>
+                            <td className="px-4 py-3 text-slate-600">{formatDate(i.issuedDate)}</td>
+                            <td className="px-4 py-3 capitalize">{i.status.replace('_', ' ')}</td>
+                            <td className="whitespace-nowrap px-2 py-3 align-middle">
+                              <button
+                                type="button"
+                                title="Delete invoice"
+                                aria-label="Delete invoice"
+                                disabled={actionsDisabled}
+                                className={`${iconBtnClass} text-red-600 hover:border-red-200 hover:bg-red-50`}
+                                onClick={() => {
+                                  if (!confirm('Delete this invoice?')) return
+                                  void (async () => {
+                                    try {
+                                      await api.deleteInvoice(i.id, projectId)
+                                      await onRefresh()
+                                      const inv = await api.listInvoicesByVendor(projectId, detailVendorId)
+                                      setDisplayInvoices(inv)
+                                    } catch (err) {
+                                      onError(err instanceof Error ? err.message : 'Delete failed.')
+                                    }
+                                  })()
+                                }}
+                              >
+                                <TrashIcon />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-base font-medium text-slate-900">Payments</h3>
+                  {!readOnly ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingVendor(null)
+                        setEditingInvoice(null)
+                        setEditingPayment(null)
+                        setPanelMode('payment')
+                      }}
+                      className="rounded-lg bg-teal-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-900"
+                    >
+                      Record payment
+                    </button>
+                  ) : null}
+                </div>
+                <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+                      <tr>
+                        <th className="w-11 min-w-[2.75rem] px-2 py-3">Actions</th>
+                        <th className="px-4 py-3">Date</th>
+                        <th className="px-4 py-3">Invoice</th>
+                        <th className="px-4 py-3">Amount</th>
+                        <th className="px-4 py-3">Method</th>
+                        <th className="px-4 py-3">Partial</th>
+                        <th className="px-4 py-3">Source</th>
+                        <th className="px-4 py-3">Reference</th>
+                        <th className="px-4 py-3">Comments</th>
+                        <th className="w-11 min-w-[2.75rem] px-2 py-3">
+                          <span className="sr-only">Delete</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayPayments.length === 0 ? (
+                        <tr>
+                          <td colSpan={10} className="px-4 py-6 text-center text-slate-500">
+                            No payments.
+                          </td>
+                        </tr>
+                      ) : (
+                        displayPayments.map((p) => {
+                          const inv = invoicesById.get(p.invoiceId)
+                          return (
+                            <tr key={p.id} className="border-b border-slate-100">
+                              <td className="whitespace-nowrap px-2 py-3 align-middle">
+                                <button
+                                  type="button"
+                                  title="Edit payment"
+                                  aria-label="Edit payment"
+                                  disabled={actionsDisabled}
+                                  className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
+                                  onClick={() => {
+                                    setEditingVendor(null)
+                                    setEditingInvoice(null)
+                                    setEditingPayment(p)
+                                    setPanelMode('payment')
+                                  }}
+                                >
+                                  <PencilIcon />
+                                </button>
+                              </td>
+                              <td className="px-4 py-3">{formatDate(p.paidDate)}</td>
+                              <td className="px-4 py-3 font-mono text-xs">
+                                {inv?.invoiceNumber ?? p.invoiceId}
+                              </td>
+                              <td className="px-4 py-3">
+                                {inv ? formatMoney(p.amount, inv.currency) : formatMoney(p.amount)}
+                              </td>
+                              <td className="px-4 py-3 text-slate-600">
+                                {p.paymentMethod ?? p.method ?? '—'}
+                              </td>
+                              <td className="px-4 py-3 text-slate-600">{p.isPaymentPartial ? 'Yes' : 'No'}</td>
+                              <td className="px-4 py-3 text-slate-600">{p.paymentSource ?? '—'}</td>
+                              <td className="px-4 py-3 text-slate-600">{p.reference ?? '—'}</td>
+                              <td className="px-4 py-3 text-slate-600">{p.comments ?? '—'}</td>
+                              <td className="whitespace-nowrap px-2 py-3 align-middle">
+                                <button
+                                  type="button"
+                                  title="Delete payment"
+                                  aria-label="Delete payment"
+                                  disabled={actionsDisabled}
+                                  className={`${iconBtnClass} text-red-600 hover:border-red-200 hover:bg-red-50`}
+                                  onClick={() => {
+                                    if (!confirm('Delete this payment?')) return
+                                    void (async () => {
+                                      try {
+                                        await api.deletePayment(p.id, projectId)
+                                        await onRefresh()
+                                        const pay = await api.listPaymentsByVendor(projectId, detailVendorId)
+                                        setDisplayPayments(pay)
+                                      } catch (err) {
+                                        onError(err instanceof Error ? err.message : 'Delete failed.')
+                                      }
+                                    })()
+                                  }}
+                                >
+                                  <TrashIcon />
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section>
+                <h3 className="text-base font-medium text-slate-900">Vendor advances</h3>
+                <div className="mt-3">
+                  <VendorDisbursementsAdvancesSection
+                    projectId={projectId}
+                    vendorId={detailVendorId}
+                    vendorName={vendorName}
+                    onRefresh={onRefresh}
+                    onError={onError}
+                    readOnly={readOnly}
+                  />
+                </div>
+              </section>
+            </div>
+          </div>
+        </>
+      ) : null}
 
       {panelMode !== null && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40" aria-hidden="true">
+        <div className="fixed inset-0 z-[52] bg-slate-900/40" aria-hidden="true">
           <div className="absolute inset-y-0 right-0 w-full max-w-xl">
             {panelMode === 'vendor' ? (
               <VendorAddPanel
@@ -219,8 +452,15 @@ export function VendorsTab({
                 projectId={projectId}
                 vendors={vendors}
                 initialInvoice={editingInvoice}
+                defaultVendorId={detailVendorId ?? undefined}
                 onClose={closePanel}
-                onRefresh={onRefresh}
+                onRefresh={async () => {
+                  await onRefresh()
+                  if (detailVendorId) {
+                    const inv = await api.listInvoicesByVendor(projectId, detailVendorId)
+                    setDisplayInvoices(inv)
+                  }
+                }}
                 onError={onError}
                 className="h-full overflow-y-auto rounded-none border-y-0 border-r-0 p-6 shadow-xl"
               />
@@ -232,8 +472,15 @@ export function VendorsTab({
                 vendorAdvances={vendorAdvances}
                 vendorName={vendorName}
                 initialPayment={editingPayment}
+                defaultVendorId={detailVendorId ?? undefined}
                 onClose={closePanel}
-                onRefresh={onRefresh}
+                onRefresh={async () => {
+                  await onRefresh()
+                  if (detailVendorId) {
+                    const pay = await api.listPaymentsByVendor(projectId, detailVendorId)
+                    setDisplayPayments(pay)
+                  }
+                }}
                 onError={onError}
                 className="h-full overflow-y-auto rounded-none border-y-0 border-r-0 p-6 shadow-xl"
               />
@@ -244,17 +491,12 @@ export function VendorsTab({
 
       <section>
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+          <div>
             <h2 className="text-lg font-medium text-slate-900">Vendors</h2>
-            {selectedVendorId && (
-              <button
-                type="button"
-                onClick={() => setSelectedVendorId(null)}
-                className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Show all
-              </button>
-            )}
+            <p className="mt-1 max-w-2xl text-sm text-slate-600">
+              Use <span className="font-medium">Details</span> to open invoices, payments, and advances for a vendor.
+              Lump-sum contractor payouts are managed under each invoice.
+            </p>
           </div>
           {!readOnly ? (
             <button
@@ -275,7 +517,7 @@ export function VendorsTab({
           <table className="min-w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
               <tr>
-                <th className="w-11 min-w-[2.75rem] px-2 py-3">Actions</th>
+                <th className="min-w-[8rem] px-2 py-3">Actions</th>
                 <th className="px-4 py-3">Vendor</th>
                 <th className="px-4 py-3">Type</th>
                 <th className="px-4 py-3">Contact</th>
@@ -294,46 +536,40 @@ export function VendorsTab({
                 </tr>
               ) : (
                 vendors.map((v) => (
-                  <tr
-                    key={v.id}
-                    className={[
-                      'cursor-pointer border-b border-slate-100',
-                      selectedVendorId === v.id ? 'bg-teal-50' : 'hover:bg-slate-50',
-                    ].join(' ')}
-                    onClick={() =>
-                      setSelectedVendorId((curr) => (curr === v.id ? null : v.id))
-                    }
-                  >
-                    <td
-                      className="whitespace-nowrap px-2 py-3 align-middle"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        title="Edit vendor"
-                        aria-label="Edit vendor"
-                        disabled={actionsDisabled}
-                        className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
-                        onClick={() => {
-                          setEditingInvoice(null)
-                          setEditingPayment(null)
-                          setEditingVendor(v)
-                          setPanelMode('vendor')
-                        }}
-                      >
-                        <PencilIcon />
-                      </button>
+                  <tr key={v.id} className="border-b border-slate-100">
+                    <td className="whitespace-nowrap px-2 py-3 align-middle">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          title="Edit vendor"
+                          aria-label="Edit vendor"
+                          disabled={actionsDisabled}
+                          className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
+                          onClick={() => {
+                            setEditingInvoice(null)
+                            setEditingPayment(null)
+                            setEditingVendor(v)
+                            setPanelMode('vendor')
+                          }}
+                        >
+                          <PencilIcon />
+                        </button>
+                        <button
+                          type="button"
+                          title="Vendor billing details"
+                          disabled={actionsDisabled}
+                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                          onClick={() => setDetailVendorId(v.id)}
+                        >
+                          Details
+                        </button>
+                      </div>
                     </td>
                     <td className="px-4 py-3 font-medium text-slate-900">{v.name}</td>
                     <td className="px-4 py-3 text-slate-600">{vendorKindLabel(v.vendorKind)}</td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {v.contactName ?? '—'}
-                    </td>
+                    <td className="px-4 py-3 text-slate-600">{v.contactName ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{v.email ?? '—'}</td>
-                    <td
-                      className="whitespace-nowrap px-2 py-3 align-middle"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <td className="whitespace-nowrap px-2 py-3 align-middle">
                       <button
                         type="button"
                         title="Delete vendor"
@@ -345,7 +581,7 @@ export function VendorsTab({
                           void (async () => {
                             try {
                               await api.deleteVendor(v.id, projectId)
-                              if (selectedVendorId === v.id) setSelectedVendorId(null)
+                              if (detailVendorId === v.id) setDetailVendorId(null)
                               await onRefresh()
                             } catch (err) {
                               onError(err instanceof Error ? err.message : 'Delete failed.')
@@ -363,235 +599,6 @@ export function VendorsTab({
           </table>
         </div>
       </section>
-
-      <section>
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-medium text-slate-900">Invoices</h2>
-          {!readOnly ? (
-            <button
-              type="button"
-              onClick={() => {
-                setEditingVendor(null)
-                setEditingInvoice(null)
-                setEditingPayment(null)
-                setPanelMode('invoice')
-              }}
-              className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
-            >
-              Record invoice
-            </button>
-          ) : null}
-        </div>
-        <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="w-11 min-w-[2.75rem] px-2 py-3">Actions</th>
-                <th className="px-4 py-3">#</th>
-                <th className="px-4 py-3">Vendor</th>
-                <th className="px-4 py-3">Amount</th>
-                <th className="px-4 py-3">Issued</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="w-11 min-w-[2.75rem] px-2 py-3">
-                  <span className="sr-only">Delete</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayInvoices.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
-                    No invoices.
-                  </td>
-                </tr>
-              ) : (
-                displayInvoices.map((i) => (
-                  <tr key={i.id} className="border-b border-slate-100">
-                    <td className="whitespace-nowrap px-2 py-3 align-middle">
-                      <button
-                        type="button"
-                        title="Edit invoice"
-                        aria-label="Edit invoice"
-                        disabled={actionsDisabled}
-                        className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
-                        onClick={() => {
-                          setEditingVendor(null)
-                          setEditingPayment(null)
-                          setEditingInvoice(i)
-                          setPanelMode('invoice')
-                        }}
-                      >
-                        <PencilIcon />
-                      </button>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs">{i.invoiceNumber}</td>
-                    <td className="px-4 py-3">{vendorName.get(i.vendorId) ?? '—'}</td>
-                    <td className="px-4 py-3">{formatMoney(i.amount, i.currency)}</td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {formatDate(i.issuedDate)}
-                    </td>
-                    <td className="px-4 py-3 capitalize">{i.status.replace('_', ' ')}</td>
-                    <td className="whitespace-nowrap px-2 py-3 align-middle">
-                      <button
-                        type="button"
-                        title="Delete invoice"
-                        aria-label="Delete invoice"
-                        disabled={actionsDisabled}
-                        className={`${iconBtnClass} text-red-600 hover:border-red-200 hover:bg-red-50`}
-                        onClick={() => {
-                          if (!confirm('Delete this invoice?')) return
-                          void (async () => {
-                            try {
-                              await api.deleteInvoice(i.id, projectId)
-                              await onRefresh()
-                            } catch (err) {
-                              onError(err instanceof Error ? err.message : 'Delete failed.')
-                            }
-                          })()
-                        }}
-                      >
-                        <TrashIcon />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section>
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-medium text-slate-900">Payments</h2>
-          {!readOnly ? (
-            <button
-              type="button"
-              onClick={() => {
-                setEditingVendor(null)
-                setEditingInvoice(null)
-                setEditingPayment(null)
-                setPanelMode('payment')
-              }}
-              className="rounded-lg bg-teal-800 px-4 py-2 text-sm font-medium text-white hover:bg-teal-900"
-            >
-              Record payment
-            </button>
-          ) : null}
-        </div>
-        <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="w-11 min-w-[2.75rem] px-2 py-3">Actions</th>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Vendor</th>
-                <th className="px-4 py-3">Invoice</th>
-                <th className="px-4 py-3">Amount</th>
-                <th className="px-4 py-3">Method</th>
-                <th className="px-4 py-3">Partial</th>
-                <th className="px-4 py-3">Source</th>
-                <th className="px-4 py-3">Reference</th>
-                <th className="px-4 py-3">Comments</th>
-                <th className="w-11 min-w-[2.75rem] px-2 py-3">
-                  <span className="sr-only">Delete</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayPayments.length === 0 ? (
-                <tr>
-                  <td colSpan={11} className="px-4 py-6 text-center text-slate-500">
-                    No payments.
-                  </td>
-                </tr>
-              ) : (
-                displayPayments.map((p) => {
-                  const inv = invoicesById.get(p.invoiceId)
-                  return (
-                    <tr key={p.id} className="border-b border-slate-100">
-                      <td className="whitespace-nowrap px-2 py-3 align-middle">
-                        <button
-                          type="button"
-                          title="Edit payment"
-                          aria-label="Edit payment"
-                          disabled={actionsDisabled}
-                          className={`${iconBtnClass} text-teal-700 hover:border-teal-200 hover:bg-teal-50`}
-                          onClick={() => {
-                            setEditingVendor(null)
-                            setEditingInvoice(null)
-                            setEditingPayment(p)
-                            setPanelMode('payment')
-                          }}
-                        >
-                          <PencilIcon />
-                        </button>
-                      </td>
-                      <td className="px-4 py-3">{formatDate(p.paidDate)}</td>
-                      <td className="px-4 py-3">
-                        {vendorName.get(p.vendorId) ?? '—'}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs">
-                        {inv?.invoiceNumber ?? p.invoiceId}
-                      </td>
-                      <td className="px-4 py-3">
-                        {inv
-                          ? formatMoney(p.amount, inv.currency)
-                          : formatMoney(p.amount)}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {p.paymentMethod ?? p.method ?? '—'}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {p.isPaymentPartial ? 'Yes' : 'No'}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {p.paymentSource ?? '—'}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {p.reference ?? '—'}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {p.comments ?? '—'}
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-3 align-middle">
-                        <button
-                          type="button"
-                          title="Delete payment"
-                          aria-label="Delete payment"
-                          disabled={actionsDisabled}
-                          className={`${iconBtnClass} text-red-600 hover:border-red-200 hover:bg-red-50`}
-                          onClick={() => {
-                            if (!confirm('Delete this payment?')) return
-                            void (async () => {
-                              try {
-                                await api.deletePayment(p.id, projectId)
-                                await onRefresh()
-                              } catch (err) {
-                                onError(err instanceof Error ? err.message : 'Delete failed.')
-                              }
-                            })()
-                          }}
-                        >
-                          <TrashIcon />
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <VendorDisbursementsAdvancesSection
-        projectId={projectId}
-        vendorName={vendorName}
-        onRefresh={onRefresh}
-        onError={onError}
-        readOnly={readOnly}
-      />
     </div>
   )
 }

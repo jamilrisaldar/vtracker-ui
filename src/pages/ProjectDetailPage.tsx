@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { canWriteProjects } from '../auth/roles'
+import { canAccessAdmin, canWriteProjects } from '../auth/roles'
 import { useAuth } from '../auth/useAuth'
 import type { Project } from '../types'
 import * as api from '../api/dataApi'
@@ -29,6 +29,7 @@ import {
 export function ProjectDetailPage() {
   const { user } = useAuth()
   const readOnly = !canWriteProjects(user)
+  const canEditGlChart = canAccessAdmin(user)
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
@@ -307,7 +308,7 @@ export function ProjectDetailPage() {
           />
         )}
         {tab === 'gl' && (
-          <GlTab projectId={projectId} onError={setErr} readOnly={readOnly} />
+          <GlTab projectId={projectId} onError={setErr} readOnly={readOnly} canEditGlChart={canEditGlChart} />
         )}
         {tab === 'documents' && (
           <DocumentsTab

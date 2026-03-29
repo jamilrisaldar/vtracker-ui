@@ -2585,7 +2585,10 @@ export async function listGeneralLedgerEntries(
   return []
 }
 
-export async function listVendorDisbursementBatches(projectId: string): Promise<VendorDisbursementBatch[]> {
+export async function listVendorDisbursementBatches(
+  projectId: string,
+  _opts?: { invoiceId?: string; vendorId?: string },
+): Promise<VendorDisbursementBatch[]> {
   await delay()
   if (!(await getProject(projectId))) throw new Error('Not found')
   return []

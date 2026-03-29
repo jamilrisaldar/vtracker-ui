@@ -288,6 +288,8 @@ export interface VendorDisbursementBatch {
   id: string
   projectId: string
   vendorId: string
+  /** When set, this lump-sum payout is scoped to the parent vendor invoice (subcontractor charges). */
+  invoiceId?: string
   lumpSumAmount: number
   currency: string
   paidToContractorDate: string

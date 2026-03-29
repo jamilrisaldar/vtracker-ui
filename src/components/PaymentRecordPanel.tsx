@@ -18,6 +18,7 @@ export function PaymentRecordPanel({
   vendorAdvances,
   vendorName,
   initialPayment = null,
+  defaultVendorId,
   onClose,
   onRefresh,
   onError,
@@ -29,6 +30,8 @@ export function PaymentRecordPanel({
   vendorAdvances: VendorAdvance[]
   vendorName: Map<string, string>
   initialPayment?: Payment | null
+  /** When recording a new payment from a vendor’s detail view, prefer that vendor’s invoices. */
+  defaultVendorId?: string
   onClose: () => void
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
@@ -172,6 +175,14 @@ export function PaymentRecordPanel({
       setAdvanceLines([])
     }
   }, [initialPayment])
+
+  useEffect(() => {
+    if (initialPayment || !defaultVendorId) return
+    const inv = invoices.find((i) => i.vendorId === defaultVendorId)
+    if (inv) {
+      setInvoiceId((cur) => (cur === '' ? inv.id : cur))
+    }
+  }, [initialPayment, defaultVendorId, invoices])
 
   return (
     <div

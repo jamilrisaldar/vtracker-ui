@@ -1451,9 +1451,16 @@ export async function listGeneralLedgerEntries(
   return apiRequest<GeneralLedgerEntry[]>(path)
 }
 
-export async function listVendorDisbursementBatches(projectId: string): Promise<VendorDisbursementBatch[]> {
+export async function listVendorDisbursementBatches(
+  projectId: string,
+  opts?: { invoiceId?: string; vendorId?: string },
+): Promise<VendorDisbursementBatch[]> {
+  const q = new URLSearchParams()
+  if (opts?.invoiceId) q.set('invoiceId', opts.invoiceId)
+  if (opts?.vendorId) q.set('vendorId', opts.vendorId)
+  const qs = q.toString()
   return apiRequest<VendorDisbursementBatch[]>(
-    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-disbursement-batches`,
+    `/api/v1/projects/${encodeURIComponent(projectId)}/vendor-disbursement-batches${qs ? `?${qs}` : ''}`,
   )
 }
 

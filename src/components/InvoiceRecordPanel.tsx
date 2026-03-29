@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import * as api from '../api/dataApi'
-import type { GlAccount, Invoice, InvoiceStatus, Vendor } from '../types'
+import type { GlAccount, Invoice, InvoiceStatus, Vendor, VendorDisbursementBatch } from '../types'
+import { formatDate, formatMoney } from '../utils/format'
 
 const statusOptions: InvoiceStatus[] = ['draft', 'sent', 'paid', 'partial', 'overdue']
 
@@ -8,6 +9,7 @@ export function InvoiceRecordPanel({
   projectId,
   vendors,
   initialInvoice = null,
+  defaultVendorId,
   onClose,
   onRefresh,
   onError,
@@ -16,6 +18,8 @@ export function InvoiceRecordPanel({
   projectId: string
   vendors: Vendor[]
   initialInvoice?: Invoice | null
+  /** Pre-select vendor when creating an invoice from a vendor’s detail view. */
+  defaultVendorId?: string
   onClose: () => void
   onRefresh: () => Promise<void>
   onError: (msg: string | null) => void
@@ -31,6 +35,10 @@ export function InvoiceRecordPanel({
   const [glAccountId, setGlAccountId] = useState('')
   const [glAccounts, setGlAccounts] = useState<GlAccount[]>([])
   const [saving, setSaving] = useState(false)
+  const [linkedBatches, setLinkedBatches] = useState<VendorDisbursementBatch[]>([])
+  const [linkableBatches, setLinkableBatches] = useState<VendorDisbursementBatch[]>([])
+  const [linkPickId, setLinkPickId] = useState('')
+  const [disbLoading, setDisbLoading] = useState(false)
 
   useEffect(() => {
     let ignore = false
@@ -57,7 +65,7 @@ export function InvoiceRecordPanel({
       setStatus(initialInvoice.status)
       setGlAccountId(initialInvoice.glAccountId ?? '')
     } else {
-      setVendorId('')
+      setVendorId(defaultVendorId ?? '')
       setInvoiceNo('')
       setAmount('')
       setIssuedDate('')
@@ -65,7 +73,33 @@ export function InvoiceRecordPanel({
       setStatus('sent')
       setGlAccountId('')
     }
-  }, [initialInvoice])
+  }, [initialInvoice, defaultVendorId])
+
+  const reloadDisbursements = useCallback(async () => {
+    if (!initialInvoice) {
+      setLinkedBatches([])
+      setLinkableBatches([])
+      return
+    }
+    setDisbLoading(true)
+    onError(null)
+    try {
+      const [linked, forVendor] = await Promise.all([
+        api.listVendorDisbursementBatches(projectId, { invoiceId: initialInvoice.id }),
+        api.listVendorDisbursementBatches(projectId, { vendorId: initialInvoice.vendorId }),
+      ])
+      setLinkedBatches(linked)
+      setLinkableBatches(forVendor.filter((b) => !b.invoiceId || b.invoiceId === initialInvoice.id))
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Could not load disbursement batches.')
+    } finally {
+      setDisbLoading(false)
+    }
+  }, [projectId, initialInvoice, onError])
+
+  useEffect(() => {
+    void reloadDisbursements()
+  }, [reloadDisbursements])
 
   return (
     <div
@@ -228,6 +262,131 @@ export function InvoiceRecordPanel({
           </button>
         </div>
       </form>
+
+      {editing && initialInvoice ? (
+        <div className="mt-8 border-t border-slate-200 pt-6">
+          <h3 className="text-base font-medium text-slate-900">Contractor disbursements &amp; subcontractor charges</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Lump-sum payouts to a contractor with optional line-level breakdown (subcontractor invoices/charges).
+            Link an existing batch to this invoice, or create one via the API with{' '}
+            <code className="rounded bg-slate-100 px-1 text-xs">invoiceId</code>.
+          </p>
+
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <label className="text-xs font-medium text-slate-600">
+              Link batch (same vendor, not linked elsewhere)
+              <select
+                className="mt-1 block min-w-[14rem] rounded-lg border border-slate-200 px-2 py-1.5 text-sm"
+                value={linkPickId}
+                onChange={(e) => setLinkPickId(e.target.value)}
+              >
+                <option value="">— Select —</option>
+                {linkableBatches
+                  .filter((b) => !b.invoiceId)
+                  .map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {formatDate(b.paidToContractorDate)} · {formatMoney(b.lumpSumAmount, b.currency)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              disabled={!linkPickId || disbLoading}
+              className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-50"
+              onClick={() => {
+                if (!linkPickId || !initialInvoice) return
+                void (async () => {
+                  try {
+                    onError(null)
+                    await api.updateVendorDisbursementBatch(projectId, linkPickId, {
+                      invoiceId: initialInvoice.id,
+                    })
+                    setLinkPickId('')
+                    await reloadDisbursements()
+                    await onRefresh()
+                  } catch (err) {
+                    onError(err instanceof Error ? err.message : 'Could not link batch.')
+                  }
+                })()
+              }}
+            >
+              Link to invoice
+            </button>
+          </div>
+
+          {disbLoading ? <p className="mt-3 text-sm text-slate-600">Loading batches…</p> : null}
+
+          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Paid to contractor</th>
+                  <th className="px-4 py-3">Lump sum</th>
+                  <th className="px-4 py-3">Source</th>
+                  <th className="px-4 py-3">Subcontractor lines</th>
+                  <th className="px-4 py-3"> </th>
+                </tr>
+              </thead>
+              <tbody>
+                {linkedBatches.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                      No disbursement batches linked to this invoice yet.
+                    </td>
+                  </tr>
+                ) : (
+                  linkedBatches.map((b) => (
+                    <tr key={b.id} className="border-b border-slate-100 align-top">
+                      <td className="px-4 py-2">{formatDate(b.paidToContractorDate)}</td>
+                      <td className="px-4 py-2">{formatMoney(b.lumpSumAmount, b.currency)}</td>
+                      <td className="px-4 py-2 capitalize">{b.paymentSourceKind}</td>
+                      <td className="px-4 py-2 text-slate-700">
+                        {(b.lines?.length ?? 0) === 0 ? (
+                          '—'
+                        ) : (
+                          <ul className="list-inside list-disc text-xs">
+                            {b.lines!.map((ln) => (
+                              <li key={ln.id}>
+                                <span className="font-medium">{ln.partyName}</span>
+                                {ln.invoiceNumber ? (
+                                  <span className="text-slate-500"> · #{ln.invoiceNumber}</span>
+                                ) : null}
+                                {' — '}
+                                {formatMoney(ln.paidAmount, b.currency)}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2">
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-slate-600 hover:text-slate-900"
+                          onClick={() => {
+                            void (async () => {
+                              try {
+                                onError(null)
+                                await api.updateVendorDisbursementBatch(projectId, b.id, { invoiceId: null })
+                                await reloadDisbursements()
+                                await onRefresh()
+                              } catch (err) {
+                                onError(err instanceof Error ? err.message : 'Could not unlink batch.')
+                              }
+                            })()
+                          }}
+                        >
+                          Unlink
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

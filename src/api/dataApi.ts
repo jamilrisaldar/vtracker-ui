@@ -799,9 +799,12 @@ export async function listGeneralLedgerEntries(
   return mock.listGeneralLedgerEntries(projectId, opts)
 }
 
-export async function listVendorDisbursementBatches(projectId: string): Promise<VendorDisbursementBatch[]> {
-  if (isBackendAuthEnabled()) return backend.listVendorDisbursementBatches(projectId)
-  return mock.listVendorDisbursementBatches(projectId)
+export async function listVendorDisbursementBatches(
+  projectId: string,
+  opts?: { invoiceId?: string; vendorId?: string },
+): Promise<VendorDisbursementBatch[]> {
+  if (isBackendAuthEnabled()) return backend.listVendorDisbursementBatches(projectId, opts)
+  return mock.listVendorDisbursementBatches(projectId, opts)
 }
 
 export async function getVendorDisbursementBatch(
